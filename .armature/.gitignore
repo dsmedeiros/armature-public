@@ -1,0 +1,4 @@
+# Armature ephemeral working state (do not commit)
+session/
+escalations/
+.code-dirty

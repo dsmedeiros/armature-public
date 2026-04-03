@@ -1,0 +1,95 @@
+{
+  "_comment": "Armature hook wiring template for Claude Code settings.json. Copy relevant entries into your project's .claude/settings.json under the 'hooks' key. Adjust paths if your .armature directory is in a non-standard location.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/block-dangerous-commands.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/check-required-reading.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/mark-dirty.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/post-stop.sh",
+            "timeout": 120000
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/post-stop.sh",
+            "timeout": 120000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/inject-context.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/reinject-context.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .armature/hooks/block-config-changes.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

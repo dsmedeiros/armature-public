@@ -1,0 +1,212 @@
+# Armature Invariant Registry
+# Machine-readable registry of all hard constraints.
+
+invariants:
+  SPEC-001:
+    name: "Specification section contiguity"
+    severity: critical
+    description: "ARMATURE.md section numbering must be contiguous to prevent broken cross-references."
+    rule: "ARMATURE.md section numbering must be contiguous."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      ci: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  SPEC-002:
+    name: "Specification internal references"
+    severity: critical
+    description: "All internal section references in ARMATURE.md must resolve to prevent dead links."
+    rule: "All internal section references in ARMATURE.md must resolve."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      ci: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - .claude/commands/agents.md
+      - .claude/agents/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  SCHEMA-001:
+    name: "Config.yaml schema compliance"
+    severity: high
+    description: "config.yaml must contain all required fields defined by the ARMATURE.md specification."
+    rule: "config.yaml must conform to the schema defined in ARMATURE.md section 8.1."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      ci:
+        - .armature/hooks/post-stop.sh
+        - .github/workflows/governance.yml
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  SCHEMA-002:
+    name: "Registry.yaml schema compliance"
+    severity: high
+    description: "registry.yaml entries must conform to the entry schema defined in ARMATURE.md."
+    rule: "registry.yaml must conform to the schema defined in ARMATURE.md section 8.3."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      ci:
+        - .armature/hooks/post-stop.sh
+        - .github/workflows/governance.yml
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  REF-001:
+    name: "CLAUDE.md routing table integrity"
+    severity: critical
+    description: "All governance file (agents.md/AGENTS.md) paths in CLAUDE.md routing table must exist as files to prevent dead references."
+    rule: "All governance file paths referenced in CLAUDE.md routing table must exist as files."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      ci:
+        - .armature/hooks/post-stop.sh
+        - .github/workflows/governance.yml
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  REF-002:
+    name: "ADR reference resolution"
+    severity: high
+    description: "All ADR references in governance file (agents.md/AGENTS.md) frontmatter must resolve to prevent governance gaps."
+    rule: "All ADR references in governance file frontmatter must resolve to files in docs/adr/."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      ci:
+        - .armature/hooks/post-stop.sh
+        - .github/workflows/governance.yml
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  HOOK-001:
+    name: "Destructive command prevention"
+    severity: high
+    description: "Destructive shell commands (rm -rf, force push, hard reset, DROP TABLE, --no-verify) must be blocked to prevent irreversible damage."
+    rule: "The block-dangerous-commands.sh hook must block destructive shell commands on PreToolUse(Bash) events."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/block-dangerous-commands.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  HOOK-002:
+    name: "Agent self-governance prevention"
+    severity: critical
+    description: "Agents must not modify their own governance configuration to prevent self-modification undermining enforcement."
+    rule: "The block-config-changes.sh hook must block agent-initiated configuration changes on ConfigChange events."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/block-config-changes.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  HOOK-003:
+    name: "Application code change tracking"
+    severity: standard
+    description: "Application code changes must be tracked to enable conditional test verification on session stop."
+    rule: "The mark-dirty.sh hook must create a dirty marker when non-governance files are modified."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/mark-dirty.sh
+        - .armature/hooks/post-stop.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  HOOK-004:
+    name: "Subagent governance context injection"
+    severity: high
+    description: "Subagents must receive governance context (active invariants, session state, scope directives) at spawn time."
+    rule: "The inject-context.sh hook must inject governance context into subagent system prompts on SubagentStart events."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/inject-context.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  HOOK-005:
+    name: "Post-compaction context recovery"
+    severity: high
+    description: "Session state must be mechanically re-injected after context compaction to prevent governance amnesia."
+    rule: "The reinject-context.sh hook must restore session state on SessionStart(compact) events."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/reinject-context.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []
+
+  HOOK-006:
+    name: "Required reading advisory"
+    severity: standard
+    description: "Agents editing governed files should be advised of required reading (governing agents.md and referenced ADRs)."
+    rule: "The check-required-reading.sh hook must advise agents of required reading on PreToolUse(Edit|Write) events."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0001-governance-as-files.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/check-required-reading.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+    exceptions: []

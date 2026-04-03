@@ -1,0 +1,38 @@
+armature-version: "1.0.0"
+
+project:
+  name: "Armature"
+  description: >
+    Portable scaffold specification for standing up agentic repository governance.
+    Defines the complete system — governance file hierarchy, agent persona architecture,
+    invariant enforcement, and operational protocols — so that any new project can be
+    initialized with a production-grade structure for human-directed, AI-executed development.
+  domain: "governance methodology and tooling"
+
+stack:
+  languages: ["Markdown", "YAML", "Bash", "Python 3"]
+  frameworks: []
+  databases: []
+  infrastructure: ["Git", "GitHub", "Claude Code"]
+  ci: "GitHub Actions"
+
+topology:
+  components:
+    - path: .armature
+      responsibility: "Core specification, persona definitions, invariant registry, templates, and validation hooks"
+      adrs: [ADR-0001]
+    - path: .claude/commands
+      responsibility: "Operational protocol definitions for armature-init, extend, update, backport, and checkpoint"
+      adrs: [ADR-0001]
+    - path: .claude/agents
+      responsibility: "Claude Code subagent wiring files for reviewer, planner, red team, and implementers"
+      adrs: [ADR-0001]
+
+governance:
+  build-candidate-prefix: "bc"
+  circuit-breaker-threshold: 3
+  reviewer-required: true
+  changeset-budget:
+    target-loc: 300
+    warn-loc: 500
+    planner-trigger-loc: 400

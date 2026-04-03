@@ -1,0 +1,42 @@
+---
+scope: "{scope_path}"
+governs: "{brief description of what this component is responsible for}"
+inherits: "{parent agents.md path, e.g., src/agents.md}"
+adrs: [{list of governing ADR identifiers, e.g., ADR-0001, ADR-0003}]
+invariants: [{list of invariant IDs from registry, e.g., SEQ-001, DIGEST-002}]
+enforced-by:
+  - "{path to CI test or runtime guard}"
+persona: implementer
+authority: [read, write, test]
+restricted: [cross-cutting-changes]
+test-scope: "{unit | integration | e2e | none}"
+---
+
+# {Component Name}
+
+## Overview
+
+{2–3 sentences: What this component does, its role in the system, its primary interfaces.}
+
+## Behavioral Directives
+
+{Non-negotiable rules for this scope. Use imperative language.}
+
+- **Must:** {directive}
+- **Must not:** {directive}
+- **Always:** {directive}
+- **Never:** {directive}
+
+## Change Expectations
+
+{What must be preserved when modifying this component. These are preservation invariants — things that are true today and must remain true after any change.}
+
+- Preserve {behavior/contract/interface}
+- Preserve {behavior/contract/interface}
+
+## Cross-Links
+
+- **Parent directives:** {inherits path}
+- **Governing ADRs:** {list with brief description of relevance}
+- **Related components:** {paths to peer agents.md files with relationship description}
+- **Invariants:** See `.armature/invariants/registry.yaml` for entries: {invariant ID list}
