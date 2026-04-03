@@ -119,6 +119,10 @@ The initialization protocol (Phase 0 scan, Phase 1 discovery, Phase 2 scaffoldin
 8. **Degraded Mode as Documentation** -- Everything human-readable without tooling
 9. **YAGNI** -- Single developer + agentic workflow; multi-user deferred
 
+## Acknowledgments
+
+This project draws partial inspiration from [etc](https://github.com/Heavy-Chain-Engineering/etc) by Heavy Chain Engineering. Certain design influences from that work are reflected in Armature's approach.
+
 ## License
 
 Copyright 2026 Panoptic Systems. Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
