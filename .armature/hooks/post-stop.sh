@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Armature post-stop hook
 # Runs deterministic checks after a Claude Code session or subagent completes.
-# Wire to Claude Code's Stop and SubagentStop lifecycle events.
+# Wire to Claude Code's Stop and SubagentStop lifecycle events, or run manually
+# from other runtimes such as Codex before handoff.
 #
 # These are mechanical checks — no LLM judgment. They validate structural
 # integrity of the governance scaffold and basic code hygiene.
@@ -23,16 +24,39 @@ fi
 
 echo "=== Armature Post-Stop Validation ==="
 
-# 1. Check that all agents.md files referenced in CLAUDE.md exist
-if [ -f "${REPO_ROOT}/CLAUDE.md" ]; then
+check_adapter_routes() {
+  local adapter_name="$1"
+  local adapter_path="$2"
+  local found_refs=0
+  local route_fail=0
+
+  if [ ! -f "$adapter_path" ]; then
+    return
+  fi
+
   while IFS= read -r ref; do
+    [ -z "$ref" ] && continue
+    found_refs=1
     agents_path="${REPO_ROOT}/${ref}"
     if [ ! -f "$agents_path" ]; then
-      echo "FAIL: CLAUDE.md references ${ref} but file does not exist"
+      echo "FAIL: ${adapter_name} references ${ref} but file does not exist"
       EXIT_CODE=1
+      route_fail=1
     fi
-  done < <(grep -oE '`[^`]*agents\.md`' "${REPO_ROOT}/CLAUDE.md" | tr -d '`' | sort -u)
-fi
+  done < <(grep -oE '`[^`]*agents\.md`' "$adapter_path" | tr -d '`' | sort -u)
+
+  if [ "$found_refs" -eq 1 ] && [ "$route_fail" -eq 0 ]; then
+    echo "PASS: ${adapter_name} routing references resolve"
+  else
+    if [ "$found_refs" -eq 0 ]; then
+      echo "SKIP: ${adapter_name} has no routed agents.md references"
+    fi
+  fi
+}
+
+# 1. Check that all agents.md files referenced in tool adapters exist
+check_adapter_routes "CLAUDE.md" "${REPO_ROOT}/CLAUDE.md"
+check_adapter_routes "CODEX.md" "${REPO_ROOT}/CODEX.md"
 
 # 2. Check that the invariant registry is valid YAML (if python is available)
 if [ -f "$REGISTRY" ]; then
@@ -55,7 +79,7 @@ PYEOF
 fi
 
 # 3. Check for uncommitted governance file changes without session log entries
-GOVERNANCE_FILES=$(git diff --name-only HEAD 2>/dev/null | grep -E '(agents\.md|CLAUDE\.md|registry\.yaml|invariants\.md|docs/adr/)' || true)
+GOVERNANCE_FILES=$(git diff --name-only HEAD 2>/dev/null | grep -E '(agents\.md|CLAUDE\.md|CODEX\.md|registry\.yaml|invariants\.md|docs/adr/)' || true)
 if [ -n "$GOVERNANCE_FILES" ]; then
   echo "WARN: Uncommitted governance file changes detected:"
   echo "$GOVERNANCE_FILES"

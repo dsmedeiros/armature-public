@@ -1,0 +1,33 @@
+{
+  "_comment": "Armature hook wiring template for Codex hooks.json. Copy to .codex/hooks.json and enable with codex_hooks = true in config.toml. Codex hooks are experimental; verify your Codex version supports them.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "command": "bash .armature/hooks/block-dangerous-commands.sh",
+        "timeout": 5
+      },
+      {
+        "command": "bash .armature/hooks/check-required-reading.sh",
+        "timeout": 5
+      }
+    ],
+    "PostToolUse": [
+      {
+        "command": "bash .armature/hooks/mark-dirty.sh",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "command": "bash .armature/hooks/post-stop.sh",
+        "timeout": 120
+      }
+    ],
+    "SessionStart": [
+      {
+        "command": "bash .armature/hooks/reinject-context.sh",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -12,6 +12,8 @@ Armature is a portable scaffold specification for standing up agentic repository
 
 This repository is the canonical source of Armature itself. It is governed by its own methodology (dogfooding). Changes to the specification, personas, commands, or agent wiring follow the same orchestrator-driven pipeline that Armature prescribes for any project.
 
+This repo also ships a `CODEX.md` adapter for Codex. `CLAUDE.md` and `CODEX.md` are parallel routing layers over the same governance sources.
+
 ## Critical Invariants
 
 | ID | Rule | Enforcement |
@@ -22,6 +24,8 @@ This repository is the canonical source of Armature itself. It is governed by it
 | SCHEMA-002 | registry.yaml must conform to the schema defined in ARMATURE.md section 8.3 | `post-stop.sh`, CI |
 | REF-001 | All agents.md paths referenced in CLAUDE.md routing table must exist as files | `post-stop.sh`, CI |
 | REF-002 | All ADR references in agents.md frontmatter must resolve to files in docs/adr/ | `post-stop.sh`, CI |
+| ADAPTER-001 | Tool-specific adapter files must not contradict shared governance | Manual review |
+| REF-003 | All agents.md paths referenced in CODEX.md routing table must exist as files | `post-stop.sh`, CI |
 | HOOK-001 | Destructive shell commands must be blocked on PreToolUse(Bash) | `block-dangerous-commands.sh` |
 | HOOK-002 | Agents must not modify their own governance configuration | `block-config-changes.sh` |
 | HOOK-003 | Application code changes must be tracked for conditional test verification | `mark-dirty.sh`, `post-stop.sh` |
@@ -33,9 +37,9 @@ This repository is the canonical source of Armature itself. It is governed by it
 
 | Scope | agents.md | ADRs | Implementer |
 |-------|-----------|------|-------------|
-| Specification | `.armature/agents.md` | ADR-0001 | `.claude/agents/specification-impl.md` |
-| Commands | `.claude/commands/agents.md` | ADR-0001 | `.claude/agents/commands-impl.md` |
-| Agent Wiring | `.claude/agents/agents.md` | ADR-0001 | `.claude/agents/agent-wiring-impl.md` |
+| Specification | `.armature/agents.md` | ADR-0001, ADR-0002 | `.claude/agents/specification-impl.md` |
+| Commands | `.claude/commands/agents.md` | ADR-0001, ADR-0002 | `.claude/agents/commands-impl.md` |
+| Agent Wiring | `.claude/agents/agents.md` | ADR-0001, ADR-0002 | `.claude/agents/agent-wiring-impl.md` |
 
 ## Meta-Instructions
 
@@ -46,7 +50,7 @@ This repository is the canonical source of Armature itself. It is governed by it
 
 ## Agent Workflow
 
-```
+```text
 Human <-> Orchestrator -> [Planner?] -> Implementer -> Reviewer -> [Red Team?] -> Accept/Reject
 ```
 

@@ -1,0 +1,301 @@
+# Armature CI Review Pipeline Template
+#
+# This template is parameterized with values from config.yaml's
+# governance.ci-review-pipeline section. During /armature-init or
+# /armature-backport, the orchestrator substitutes {{placeholders}}
+# to generate .github/workflows/claude-pr-fix.yml.
+#
+# Placeholders:
+#   {{REVIEW_BOT_NAMES}}         — Bot login filter condition (e.g., "== 'greptile-apps[bot]' || == 'codex[bot]'")
+#   {{REVIEW_BOT_NAMES_JS}}      — JS array of bot logins for comment filtering
+#   {{AUTH_SECTION}}              — API key or GitHub App auth configuration
+#   {{MODEL}}                     — Claude model ID (e.g., "claude-opus-4-6")
+#   {{MAX_TURNS}}                 — Max conversation turns
+#   {{BATCH_WAIT_SECONDS}}        — Seconds to wait for comment batching
+#   {{TEST_COMMAND}}              — Project test command
+#   {{SCORE_GATED_BOT}}           — Login of score-gated bot (or empty if none)
+#   {{SCORE_PATTERN}}             — Regex to extract score
+#   {{SCORE_THRESHOLD}}           — Minimum passing score
+#   {{FINAL_REVIEWER_TRIGGER}}    — Comment text to invoke final reviewer (e.g., "@codex review this")
+#   {{DIRECT_BOT_ACK_EMOJI}}      — Emoji for direct bot acknowledgment
+#   {{DIRECT_BOT_ACK_TIMEOUT}}    — Seconds to wait for ack
+#   {{DIRECT_BOT_ACK_RETRIES}}    — Max retry attempts
+#   {{SOURCE_FILE_EXTENSIONS}}    — Extensions to detect source changes (e.g., ".py", ".json")
+#   {{ALLOWED_BOTS}}              — Comma-separated bot logins allowed to trigger the Action
+
+name: Claude PR Fix
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created, edited]
+  push:
+    branches:
+      - '**'
+
+jobs:
+  # ---------------------------------------------------------------
+  # Batch review bot comments and run Claude Code Action to fix all
+  # unaddressed issues in a single commit.
+  # ---------------------------------------------------------------
+  batch-claude-fix:
+    if: |
+      github.event_name == 'pull_request_review_comment' &&
+      (
+        {{REVIEW_BOT_NAMES}}
+      )
+    runs-on: ubuntu-latest
+    concurrency:
+      group: claude-fix-batch-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Wait for all review comments to arrive
+        run: sleep {{BATCH_WAIT_SECONDS}}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Collect unaddressed review comments
+        id: collect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const botLogins = {{REVIEW_BOT_NAMES_JS}};
+
+            const { data: allComments } = await github.rest.pulls.listReviewComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100
+            });
+
+            const botComments = allComments.filter(c =>
+              !c.in_reply_to_id && botLogins.includes(c.user.login)
+            );
+
+            const unaddressed = [];
+            for (const bc of botComments) {
+              const replies = allComments.filter(r => r.in_reply_to_id === bc.id);
+              const alreadyFixed = replies.some(r =>
+                r.body && r.body.includes('Fixed in')
+              );
+              if (!alreadyFixed) {
+                unaddressed.push(bc);
+              }
+            }
+
+            if (unaddressed.length === 0) {
+              console.log('All review comments are already addressed.');
+              core.setOutput('has_issues', 'false');
+              return;
+            }
+
+            const issueList = unaddressed.map((c, i) => {
+              const shortBody = c.body
+                .replace(/<[^>]*>/g, '')
+                .slice(0, 300);
+              return `### Issue ${i + 1}: ${c.path}:${c.line || c.original_line || '?'}\n${shortBody}`;
+            }).join('\n\n');
+
+            core.setOutput('has_issues', 'true');
+            core.setOutput('prompt', `Fix all of the following code review issues in a single commit. Run tests after fixing to verify no regressions.\n\n${issueList}`);
+            console.log(`Found ${unaddressed.length} unaddressed issue(s).`);
+
+      - name: Run Claude Code to fix issues
+        if: steps.collect.outputs.has_issues == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          {{AUTH_SECTION}}
+          allowed_bots: "{{ALLOWED_BOTS}}"
+          prompt: ${{ steps.collect.outputs.prompt }}
+          claude_args: >-
+            --model {{MODEL}}
+            --max-turns {{MAX_TURNS}}
+            --append-system-prompt "You are fixing PR review comments. Skip the orchestrator protocol. Do NOT read .armature/personas/, .armature/session/, or .armature/journal.md. Focus only on the code fixes requested. Run {{TEST_COMMAND}} after fixing to verify."
+
+  # ---------------------------------------------------------------
+  # After a push with source changes, mark addressed review threads
+  # with "Fixed in {sha}."
+  # ---------------------------------------------------------------
+  mark-fixed-threads:
+    if: |
+      github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Mark addressed review threads
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha;
+            const shortSha = sha.slice(0, 7);
+            const branch = context.ref.replace('refs/heads/', '');
+            const botLogins = {{REVIEW_BOT_NAMES_JS}};
+            const sourceExtensions = {{SOURCE_FILE_EXTENSIONS}};
+
+            const { data: commit } = await github.rest.repos.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: sha
+            });
+            const changedFiles = (commit.files || []).map(f => f.filename);
+            const hasSourceChanges = changedFiles.some(f =>
+              sourceExtensions.some(ext => f.endsWith(ext))
+            );
+            if (!hasSourceChanges) {
+              console.log('Push contains no source file changes. Skipping.');
+              return;
+            }
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${branch}`,
+              state: 'open'
+            });
+
+            if (prs.length === 0) return;
+            const prNumber = prs[0].number;
+
+            const { data: allComments } = await github.rest.pulls.listReviewComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100
+            });
+
+            const botComments = allComments.filter(c =>
+              !c.in_reply_to_id && botLogins.includes(c.user.login)
+            );
+
+            const changedSet = new Set(changedFiles);
+
+            for (const bc of botComments) {
+              const replies = allComments.filter(r => r.in_reply_to_id === bc.id);
+              const hasFixedMarker = replies.some(r =>
+                r.body && r.body.includes('Fixed in')
+              );
+              if (!hasFixedMarker && changedSet.has(bc.path)) {
+                console.log(`Marking thread ${bc.id} (${bc.path}) as fixed in ${shortSha}`);
+                await github.rest.pulls.createReplyForReviewComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  comment_id: bc.id,
+                  body: `Fixed in ${shortSha}.`
+                });
+              }
+            }
+
+  # ---------------------------------------------------------------
+  # SCORE-GATED REVIEW: When the score-gated bot updates its summary,
+  # check the score and graduate to the final reviewer if threshold met.
+  #
+  # Remove this job if no score-gated bot is configured.
+  # ---------------------------------------------------------------
+  check-score-gate:
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.comment.user.login == '{{SCORE_GATED_BOT}}'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Parse score and request next review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.comment.body;
+            const prNumber = context.payload.issue.number;
+
+            const scoreMatch = body.match(/{{SCORE_PATTERN}}/);
+            if (!scoreMatch) {
+              console.log('No score found, skipping.');
+              return;
+            }
+
+            const score = parseInt(scoreMatch[1], 10);
+            console.log(`Score: ${score}`);
+
+            if (score < {{SCORE_THRESHOLD}}) {
+              console.log(`Score ${score} < {{SCORE_THRESHOLD}}. Waiting for fixes.`);
+              return;
+            }
+
+            // Score meets threshold — invoke final reviewer with retry
+            const MAX_ATTEMPTS = {{DIRECT_BOT_ACK_RETRIES}};
+            const WAIT_SECONDS = {{DIRECT_BOT_ACK_TIMEOUT}};
+
+            for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+              console.log(`Attempt ${attempt}/${MAX_ATTEMPTS}: posting final review request...`);
+
+              const { data: comment } = await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: '{{FINAL_REVIEWER_TRIGGER}}'
+              });
+
+              await new Promise(r => setTimeout(r, WAIT_SECONDS * 1000));
+
+              const { data: reactions } = await github.rest.reactions.listForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id
+              });
+
+              const hasAck = reactions.some(r => r.content === '{{DIRECT_BOT_ACK_EMOJI}}');
+              if (hasAck) {
+                console.log(`Final reviewer acknowledged on attempt ${attempt}. Done.`);
+                return;
+              }
+
+              console.log(`No ack. Deleting comment and retrying...`);
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id
+              });
+            }
+
+            console.log(`Final reviewer did not acknowledge after ${MAX_ATTEMPTS} attempts.`);
+
+  # ---------------------------------------------------------------
+  # After Claude pushes a fix, request re-review from the score-gated
+  # bot (not the final reviewer — score gate must pass first).
+  #
+  # Adjust the bot login and trigger text for your project.
+  # ---------------------------------------------------------------
+  post-fix-rereview:
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.comment.user.login == 'claude[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Request re-review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: '@{{SCORE_GATED_BOT_SHORT}} review this'
+            });

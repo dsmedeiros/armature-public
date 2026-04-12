@@ -1,4 +1,4 @@
-armature-version: "1.0.0"
+armature-version: "1.1.0"
 
 project:
   name: "Armature"
@@ -13,20 +13,20 @@ stack:
   languages: ["Markdown", "YAML", "Bash", "Python 3"]
   frameworks: []
   databases: []
-  infrastructure: ["Git", "GitHub", "Claude Code"]
+  infrastructure: ["Git", "GitHub", "Claude Code", "Codex"]
   ci: "GitHub Actions"
 
 topology:
   components:
     - path: .armature
       responsibility: "Core specification, persona definitions, invariant registry, templates, and validation hooks"
-      adrs: [ADR-0001]
+      adrs: [ADR-0001, ADR-0002]
     - path: .claude/commands
       responsibility: "Operational protocol definitions for armature-init, extend, update, backport, and checkpoint"
-      adrs: [ADR-0001]
+      adrs: [ADR-0001, ADR-0002]
     - path: .claude/agents
       responsibility: "Claude Code subagent wiring files for reviewer, planner, red team, and implementers"
-      adrs: [ADR-0001]
+      adrs: [ADR-0001, ADR-0002]
 
 governance:
   build-candidate-prefix: "bc"
@@ -36,3 +36,23 @@ governance:
     target-loc: 300
     warn-loc: 500
     planner-trigger-loc: 400
+  ci-review-pipeline:
+    enabled: false
+    auth-method: "api-key"            # "api-key" | "github-app"
+    model: "claude-sonnet-4-6"        # Claude model ID for CI fixes
+    review-bots: []                   # Populated during /armature-init
+    # Example review-bots entry:
+    #   - name: "greptile-apps[bot]"
+    #     type: "score-gated"         # "score-gated" | "direct"
+    #     score-threshold: 4          # Minimum score to pass (X/5)
+    #     score-pattern: "(\\d)\\s*/\\s*5"
+    #   - name: "chatgpt-codex-connector[bot]"
+    #     type: "direct"
+    #     ack-emoji: "eyes"
+    #     ack-timeout: 20
+    #     ack-retries: 5
+    final-reviewer: ""                # Bot trigger after score gate passes
+    final-reviewer-trigger: ""        # e.g., "@codex review this"
+    batch-wait-seconds: 60
+    test-command: ""                   # e.g., "python -m pytest"
+    max-turns: 15

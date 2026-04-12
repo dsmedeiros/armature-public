@@ -108,6 +108,43 @@ invariants:
       - CLAUDE.md
     exceptions: []
 
+  ADAPTER-001:
+    name: "Tool adapter consistency"
+    severity: high
+    description: "Tool-specific adapter files must route to the shared governance sources and must not redefine or contradict them."
+    rule: "Tool-specific adapter files must route to the same governance sources and must not redefine or contradict root/scoped governance, ADRs, or the invariant registry."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0002-tool-adapters-and-codex-support.md
+    enforced-by:
+      ci: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - .claude/agents/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  REF-003:
+    name: "CODEX.md routing table integrity"
+    severity: critical
+    description: "All governance file (agents.md/AGENTS.md) paths in CODEX.md routing tables must exist as files to prevent dead references."
+    rule: "All governance file paths referenced in CODEX.md routing tables must exist as files."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0002-tool-adapters-and-codex-support.md
+    enforced-by:
+      ci:
+        - .armature/hooks/post-stop.sh
+        - .github/workflows/governance.yml
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
   HOOK-001:
     name: "Destructive command prevention"
     severity: high

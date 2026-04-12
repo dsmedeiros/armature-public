@@ -53,6 +53,18 @@ Rule: All ADR references in agents.md frontmatter must resolve to files in docs/
 Rationale: ADR references in frontmatter tell agents which architectural decisions govern their scope. An orphan reference creates a false governance claim — the agent thinks a decision exists when it doesn't.
 Enforcement: `post-stop.sh` check #4, CI.
 
+**REF-003 — CODEX.md Routing Table Resolution** (critical)
+Rule: All agents.md paths referenced in CODEX.md routing tables must exist as files.
+Rationale: CODEX.md is a thin routing adapter over the same governance hierarchy. A broken path creates an ungoverned Codex execution path and defeats the adapter's purpose.
+Enforcement: `post-stop.sh` routing check, CI.
+
+## Tool Adapter Integrity
+
+**ADAPTER-001 — Tool Adapter Consistency** (high)
+Rule: Tool-specific adapter files must route to the same governance sources and must not redefine or contradict root/scoped governance, ADRs, or the invariant registry.
+Rationale: Armature remains single-source-of-truth only if runtime-specific entrypoints stay thin. If `CLAUDE.md` or `CODEX.md` start carrying divergent rules, the framework splits into incompatible governance variants.
+Enforcement: Manual review.
+
 ## Hook Enforcement
 
 **HOOK-001 — Block Destructive Shell Commands** (high)

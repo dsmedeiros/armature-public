@@ -1,6 +1,6 @@
 # Armature — Agentic Repository Management Architecture
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Active
 **Author:** Dave Medeiros / Panoptic Systems
 
@@ -54,6 +54,7 @@ The scaffold supports a single developer directing an agentic workflow. Multi-us
 ```
 project-root/
 ├── CLAUDE.md                              ← Claude Code entry point / lean router
+├── CODEX.md                               ← Codex entry point / lean router
 ├── agents.md                              ← Root governance directives (cross-tool)
 ├── .armature/
 │   ├── ARMATURE.md                        ← This specification
@@ -73,8 +74,10 @@ project-root/
 │   ├── templates/
 │   │   ├── agents.md.tmpl                 ← AGENTS.md skeleton
 │   │   ├── adr.md.tmpl                    ← ADR template
+│   │   ├── CODEX.md.tmpl                  ← Codex adapter template
 │   │   ├── persona.md.tmpl               ← Implementer persona template
-│   │   └── settings-hooks.json.tmpl       ← Claude Code hook wiring template
+│   │   ├── settings-hooks.json.tmpl       ← Claude Code hook wiring template
+│   │   └── codex-hooks.json.tmpl          ← Codex hook wiring template (experimental)
 │   ├── journal.md                         ← Governance journal (committed, append-only)
 │   ├── session/
 │   │   ├── state.md                       ← Living session state
@@ -113,7 +116,7 @@ project-root/
 ### 3.2 What Gets Committed vs. Gitignored
 
 **Committed:**
-- `CLAUDE.md`, root `agents.md`
+- `CLAUDE.md`, `CODEX.md`, root `agents.md`
 - `.armature/ARMATURE.md`, `config.yaml`
 - `.armature/personas/` (all persona files)
 - `.armature/invariants/` (registry and invariants.md)
@@ -162,6 +165,10 @@ CLAUDE.md fully survives compaction. After `/compact`, Claude Code re-reads it f
 
 ### 3.4 Root agents.md — Cross-Tool Governance
 
+Projects may also ship a sibling `CODEX.md` adapter for Codex. `CODEX.md` is not a second source of truth; it is a runtime-specific routing layer over the same governance sources. It should point Codex at shared `agents.md` files, ADRs, the invariant registry, and persona files, while describing Codex-accurate equivalents for Claude-only mechanics such as slash commands, lifecycle hooks, and subagent wiring.
+
+Note: Codex does not auto-discover `CODEX.md`. Projects using Codex must set `project_doc_fallback_filenames = ["CODEX.md"]` in `.codex/config.toml` so that Codex reads this adapter file on session start.
+
 Root `agents.md` holds global directives applicable to any AI coding tool (Claude Code, Codex, future tooling). It defines:
 
 - Repository-wide coding standards
@@ -172,7 +179,7 @@ Root `agents.md` holds global directives applicable to any AI coding tool (Claud
 - Package management rules
 - PR/commit conventions
 
-Root `agents.md` does not reference Claude Code-specific features, personas, or Armature internals. It is tool-agnostic.
+Root `agents.md` does not reference Claude Code-specific features, personas, or Armature internals. It is tool-agnostic. Tool adapters such as `CLAUDE.md` and `CODEX.md` derive from it; they must not contradict it.
 
 ### 3.5 Scoped agents.md — The Cascading Hierarchy
 
@@ -292,20 +299,23 @@ Armature defines five agent personas organized by decision authority, not skill 
 
 | Persona | Authority | Scope | Writes Code? | Agent Level |
 |---|---|---|---|---|
-| Orchestrator | Planning, delegation, acceptance | Global | No | Main agent |
-| Implementer | Execution within declared scope | Per-component | Yes | Subagent |
-| Reviewer | Invariant compliance, veto | Global (read-only) | No | Subagent |
-| Red Team Reviewer | Adversarial engineering quality, veto | Global (read-only) | No | Subagent |
-| Planner | Step-by-step decomposition | Per-task (opt-in) | No | Subagent |
+| Orchestrator | Planning, delegation, acceptance | Global | No | Primary agent |
+| Implementer | Execution within declared scope | Per-component | Yes | Auxiliary role |
+| Reviewer | Invariant compliance, veto | Global (read-only) | No | Auxiliary role |
+| Red Team Reviewer | Adversarial engineering quality, veto | Global (read-only) | No | Auxiliary role |
+| Planner | Step-by-step decomposition | Per-task (opt-in) | No | Auxiliary role |
 
-The orchestrator runs as the main Claude Code agent (established by directive in CLAUDE.md). Implementers, reviewers, and planners are subagents spawned by the orchestrator. This keeps the hierarchy to two levels maximum — clean context boundaries, no nesting problems.
+The orchestrator runs as the primary agent in the active tool runtime. In Claude Code, that identity is established by `CLAUDE.md`. In Codex, it is established by `CODEX.md`. Implementers, reviewers, and planners run as explicit subagents when the tool supports them. In Claude Code, subagents are spawned via the Agent tool. In Codex, parallel subagent spawning is available when the user explicitly requests it. When subagent support is unavailable or not requested, the workflow preserves those same role boundaries through sequential role passes.
 
 Persona definitions live in `.armature/personas/`. Subagent wiring lives in `.claude/agents/` (for implementers, reviewers, and planners only — the orchestrator is not a subagent).
+
+In Codex, the same persona boundaries still apply, but the runtime adapter is `CODEX.md` and scope routing points directly at shared persona files rather than `.claude/agents/` wiring.
 
 ### 4.2 Orchestrator
 
 **File:** `.armature/personas/orchestrator.md`
-**Claude Code agent level:** Main agent (established by CLAUDE.md directive)
+**Claude Code agent level:** Primary agent (established by `CLAUDE.md`)
+**Codex agent level:** Primary agent (established by `CODEX.md`)
 
 The orchestrator is the single point of contact between the human and the agentic workflow. The human talks to the orchestrator. The orchestrator handles everything else. The human should never need to write PRD files, run Taskmaster commands, invoke implementers, or interact with any other agent.
 
@@ -332,6 +342,7 @@ Conversation → PRD → Task Graph → Delegation → Review → Acceptance
 
 **Phase C — Execution:**
 - Reads CLAUDE.md and AGENTS.md frontmatter for topology
+- In Codex, reads `CODEX.md` and AGENTS.md frontmatter for topology, then routes directly to shared persona files
 - Queries Taskmaster for the next task respecting dependency order
 - Writes delegation intent to session state before spawning implementers (auto-compaction safety)
 - Delegates to scoped implementers based on AGENTS.md scoping
@@ -354,11 +365,13 @@ Conversation → PRD → Task Graph → Delegation → Review → Acceptance
 
 **Authority over governance files:**
 - Can update CLAUDE.md (routing table, critical invariants)
+- Can update CODEX.md (routing table, critical invariants)
 - Can update root agents.md (global directives)
 - Can update the invariant registry (new invariants, new references)
 - Can create new scoped agents.md files (component onboarding)
 - Can generate and update PRDs in `.taskmaster/docs/`
 - Can update ARMATURE.md (specification amendments, protocol additions) via the /armature-update protocol
+- In tools without slash commands, follows `.claude/commands/armature-update.md` conversationally instead of invoking `/armature-update`
 - Can log exceptions to invariants with rationale
 - Can write to the governance journal
 - Can commit accepted changes and tag build candidates
@@ -369,6 +382,8 @@ Conversation → PRD → Task Graph → Delegation → Review → Acceptance
 - Point each implementer at only the files listed in its scoped AGENTS.md frontmatter
 - Do not read application source code — delegate exploration tasks instead
 - Checkpoint proactively at milestone boundaries; prefer fresh sessions over extended runs
+
+In tools without persistent subagent wiring, the orchestrator still performs planner, implementer, reviewer, and red-team phases as distinct role passes. The runtime changes; the authority boundaries do not.
 
 **Subagent spawning protocol:**
 
@@ -646,15 +661,20 @@ This ensures that review surface area per pass stays within the changeset budget
 
 **Hooks are the backstop, not the primary enforcement.** The primary enforcement layer is the persona directive — "you do not write application code" — which prevents bad reasoning from happening in the first place. Hooks catch what slips past the behavioral layer. All hooks are bash scripts, deterministic, and execute without LLM involvement. Guards exit 2 to block operations; observers exit 0 always. Hooks receive context via JSON on stdin.
 
+In tools that cannot wire these hooks natively, the same scripts still serve as manual validation and CI enforcement artifacts.
+
 #### 5.2.1 On-Stop Validation (Stop, SubagentStop)
 
 Wired to Claude Code's `Stop` and `SubagentStop` lifecycle events. Runs `post-stop.sh`, which performs:
 
 - CLAUDE.md routing table references resolve to existing files
+- CODEX.md routing table references resolve to existing files when CODEX.md is present
 - YAML governance files conform to their schemas (SCHEMA-001, SCHEMA-002)
 - No uncommitted governance file changes exist without session log entries
 - All ADR references in `agents.md` frontmatter resolve to files in `docs/adr/`
 - Conditional application test run: if `.armature/.code-dirty` marker exists, runs the project test suite and removes the marker on pass
+
+In Codex and other tools without lifecycle wiring, `post-stop.sh` is run manually before handoff or via CI.
 
 This is the only hook that may exceed one second of execution time, due to the conditional test suite invocation triggered by the `mark-dirty` integration.
 
@@ -686,20 +706,49 @@ Two hooks maintain ambient context across subagent boundaries and context compac
 
 Hooks are wired to Claude Code lifecycle events via `settings.json`. A template is provided at `.armature/templates/settings-hooks.json.tmpl`. Projects copy and adapt this template during `/armature-init`. The template documents the assumed Claude Code hook API contract and serves as the authoritative mapping between hook scripts and the lifecycle events they handle.
 
+Codex has an experimental `hooks.json` system (`.codex/hooks.json`) that supports the same lifecycle events (`PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`). When available, projects can wire Armature hook scripts to Codex lifecycle events via `.codex/hooks.json`. A template mapping is provided at `.armature/templates/codex-hooks.json.tmpl`. When hooks.json is unavailable or not desired, the same scripts serve as shared manual/CI enforcement.
+
 ### 5.3 Scaffold Integrity Tests (CI)
 
 A test suite that validates the governance structure itself:
 
 - Every governance file (`agents.md` or `AGENTS.md`) referenced in CLAUDE.md's routing table exists
+- Every governance file (`agents.md` or `AGENTS.md`) referenced in CODEX.md's routing table exists when CODEX.md is present
 - Every ADR referenced in any governance file frontmatter exists
 - Every invariant ID in any governance file frontmatter exists in the registry
 - Every `enforced-by` entry in the registry points to a file that exists
 - Every `referenced-in` entry in the registry points to a file that references that invariant
 - CLAUDE.md routing table covers every governance file in the repo
+- CODEX.md routing table covers every governance file in the repo when CODEX.md is present
 - No governance file references a parent in `inherits` that doesn't exist
 - No invariant has severity `critical` without at least one CI enforcement
 
-### 5.4 CI Contract Tests (Project-Specific)
+### 5.4 CI Review Pipeline (Optional)
+
+Armature provides an optional automated PR review-fix pipeline that integrates with external code review bots (e.g., Greptile, Codex). When enabled, the pipeline:
+
+1. **Detects** review comments from configured bots
+2. **Batches** all unaddressed comments into a single fix request (60-second collection window by default)
+3. **Runs** Claude Code Action to fix all issues in one atomic commit
+4. **Marks** each addressed review thread with "Fixed in {sha}"
+5. **Requests re-review** from the score-gated bot (if configured)
+6. **Graduates** to a final reviewer once the score threshold is met
+
+**Configuration** is in `governance.ci-review-pipeline` in `config.yaml`. The pipeline is disabled by default and enabled during `/armature-init` based on user preferences.
+
+**Two auth methods:**
+- `api-key` — Uses `ANTHROPIC_API_KEY` repository secret with Claude Code Action. Supports model selection.
+- `github-app` — Uses the Claude GitHub App. No API key needed, but no model control.
+
+**Review bot types:**
+- `score-gated` — Bot produces a score (e.g., 3/5). Pipeline waits until score meets threshold before graduating to the next reviewer. Score pattern is configurable via regex.
+- `direct` — Bot posts review comments directly. Fixes are applied and the bot is re-invoked. Supports acknowledgment detection via emoji reaction with configurable timeout and retries.
+
+**Template:** `.armature/templates/claude-pr-fix.yml.tmpl` contains the parameterized GitHub Actions workflow. During `/armature-init` or `/armature-backport`, the orchestrator substitutes config values to generate `.github/workflows/claude-pr-fix.yml`.
+
+**Loop prevention:** Each fixed thread receives a "Fixed in {sha}" reply. The batching step skips threads that already have this marker. The mark-fixed-threads job only runs on pushes that modify source files (`.py`, `.json`, etc.) and only marks threads whose referenced file was touched.
+
+### 5.5 CI Contract Tests (Project-Specific)
 
 Implemented per-project in the test suite. These validate that architectural invariants are actually enforced at runtime:
 
@@ -985,7 +1034,7 @@ Armature instantiation is a three-phase process that works for both greenfield a
 **Phase 0 — Pre-Flight (existing repos):**
 The orchestrator scans the codebase before engaging the human:
 - Reads directory tree, package manifests, configs, CI files, READMEs, existing tests
-- Checks for existing governance artifacts (CLAUDE.md, agents.md/AGENTS.md, ADRs, .claude/, .taskmaster/)
+- Checks for existing governance artifacts (CLAUDE.md, CODEX.md, agents.md/AGENTS.md, ADRs, .claude/, .taskmaster/)
 - Tags the pre-Armature baseline: `git tag armature/pre-init`
 - Reports findings to the human: what exists, what will be created, what will be incorporated
 
@@ -1008,12 +1057,16 @@ Using discovery output, the system creates (checking for existing artifacts at e
 4. Scoped governance files (`agents.md` or `AGENTS.md`, matching the project's existing convention) — iterating the topology (not globbing existing files) to update existing governance files and create new ones for components that lack them
 5. Implementer persona files
 6. Claude Code subagent files (implementers, reviewer, planner — not orchestrator)
-7. CLAUDE.md — merging with existing content, or generating fresh with orchestrator directive
+7. Tool adapter entrypoints (`CLAUDE.md`, `CODEX.md`) — merge existing content or generate both runtime adapters from shared governance
+   `CODEX.md` is created or updated in the same step so both adapters stay aligned.
+   When generating `CODEX.md`, include a prerequisite note reminding users that Codex does not auto-discover this file and that `.codex/config.toml` must include `project_doc_fallback_filenames = ["CODEX.md"]`.
 8. `.gitignore` entries (appended, not replaced)
 9. Taskmaster initialization (skipped if `.taskmaster/` exists)
 10. Verification with human, initial build candidate tag, journal entry
 
-**Ordering matters:** ADRs before registry (invariants reference ADRs) → registry before scoped agents.md (frontmatter references invariants) → agents.md before CLAUDE.md (routing table references agents.md files).
+**Ordering matters:** ADRs before registry (invariants reference ADRs) → registry before scoped agents.md (frontmatter references invariants) → agents.md before tool adapter entrypoints (routing tables reference agents.md files).
+
+Shared governance files must be created before tool adapter entrypoints so that `CLAUDE.md` and `CODEX.md` only route to already-existing artifacts.
 
 The full step-by-step protocol is defined in `.claude/commands/armature-init.md`.
 
@@ -1028,7 +1081,7 @@ Triggered by the orchestrator when a new component directory is needed.
 4. Creates implementer persona file at `.armature/personas/implementers/{component}.md`
 5. Creates Claude Code subagent at `.claude/agents/{component}-impl.md`
 6. Updates invariant registry if new invariants apply
-7. Updates CLAUDE.md routing table with new entry
+7. Updates `CLAUDE.md` routing table and `CODEX.md` routing table (when present) with the new entry
 8. Logs the onboarding in session state decisions log
 
 **Component onboarding is an orchestrator-only action.** If an implementer discovers that a new component is needed, it reports that finding to the orchestrator.
@@ -1182,7 +1235,7 @@ When the canonical Armature repository evolves, projects using Armature need a w
 
 **What gets updated (framework-generic):** ARMATURE.md, core personas (orchestrator, reviewer, reviewer-redteam, planner), templates, hooks, all commands (including backport itself), and core subagent wiring (reviewer, planner, redteam).
 
-**What is preserved (project-specific):** config.yaml, invariant registry, invariants.md, implementer personas, CLAUDE.md, root and scoped agents.md files, ADRs, journal, session state, reviews, implementer subagent wiring.
+**What is preserved (project-specific):** config.yaml, invariant registry, invariants.md, implementer personas, CLAUDE.md, CODEX.md, root and scoped agents.md files, ADRs, journal, session state, reviews, implementer subagent wiring.
 
 **Protocol summary:**
 1. Compare `armature-version` between project and canonical source
@@ -1203,7 +1256,7 @@ See `/armature-backport` for the full step-by-step protocol.
 ### 8.1 .armature/config.yaml
 
 ```yaml
-armature-version: "1.0.0"       # Armature methodology version
+armature-version: "1.1.0"       # Armature methodology version
 
 project:
   name: ""
@@ -1235,6 +1288,23 @@ governance:
     target-loc: 300           # Ideal max LOC per implementer delegation
     warn-loc: 500             # Hard stop — must decompose before delegating
     planner-trigger-loc: 400  # Invoke planner if estimated LOC exceeds this
+  ci-review-pipeline:
+    enabled: false            # Enable automated PR review-fix cycle
+    auth-method: "api-key"    # "api-key" | "github-app"
+    model: "claude-sonnet-4-6"  # Claude model ID for CI fixes
+    review-bots:              # Bots that trigger fix cycle
+      - name: ""              # GitHub bot login (e.g., "greptile-apps[bot]")
+        type: ""              # "score-gated" | "direct"
+        score-threshold: 4    # For score-gated: minimum passing score
+        score-pattern: ""     # Regex to extract score (e.g., "(\\d)\\s*/\\s*5")
+        ack-emoji: ""         # For direct: emoji to check for acknowledgment
+        ack-timeout: 20       # Seconds to wait for ack
+        ack-retries: 5        # Max retry attempts
+    final-reviewer: ""        # Bot to invoke after score gate passes
+    final-reviewer-trigger: ""  # Comment text (e.g., "@codex review this")
+    batch-wait-seconds: 60    # Seconds to collect comments before batching
+    test-command: ""          # Test command after fixes (project-specific)
+    max-turns: 15             # Max Claude conversation turns per fix
 ```
 
 ### 8.2 AGENTS.md Frontmatter
@@ -1280,7 +1350,7 @@ test-scope: ""               # unit | integration | e2e | none
 
 When no agentic workflow is active, the Armature scaffold serves as project documentation:
 
-- `CLAUDE.md` → project overview and navigation guide
+- `CLAUDE.md` / `CODEX.md` → project overview and navigation guide
 - `agents.md` files → scoped development guidelines (YAML frontmatter is metadata; body is readable prose)
 - `docs/adr/` → architectural decisions with rationale
 - `.armature/invariants/invariants.md` → hard constraints in plain English
@@ -1311,10 +1381,10 @@ Armature is designed for single-developer agentic workflows, but projects vary i
 - Medium repos (10k–50k LOC): consider reducing target-loc to 200 and warn-loc to 350
 - Large repos (> 50k LOC): per-scope budget overrides may be needed; repos with many cross-cutting concerns should increase circuit-breaker-threshold to 4–5
 
-**CLAUDE.md routing table:**
+**Tool adapter routing tables:**
 - Beyond ~15 entries: group by subsystem with section headings
-- Beyond ~30 entries: extract to a separate `routing.yaml` file referenced by CLAUDE.md
-- Always keep the critical invariants section in CLAUDE.md regardless of routing table size
+- Beyond ~30 entries: extract to a separate `routing.yaml` file referenced by `CLAUDE.md` and `CODEX.md`
+- Always keep the critical invariants section in tool adapters regardless of routing table size
 
 **ADR numbering:** Use 4-digit IDs from the start (ADR-0001). Add `docs/adr/index.md` when count exceeds ~30.
 
@@ -1325,7 +1395,7 @@ The following are explicitly deferred under the YAGNI principle:
 - **Multi-user session isolation** — concurrent agentic sessions by different developers
 - **Scaffold methodology versioning** — migration paths between Armature versions
 - **Visual dependency graph generation** — from frontmatter cross-links
-- **Automated CLAUDE.md routing table generation** — from agents.md file discovery
+- **Automated tool adapter routing table generation** — from agents.md file discovery
 - **Automated invariant registry validation** — contract test that validates registry against reality
 - **Commercial distribution** — packaging Armature for other teams/organizations
 
