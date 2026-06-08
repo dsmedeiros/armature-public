@@ -53,6 +53,18 @@ Rule: All ADR references in agents.md frontmatter must resolve to files in docs/
 Rationale: ADR references in frontmatter tell agents which architectural decisions govern their scope. An orphan reference creates a false governance claim — the agent thinks a decision exists when it doesn't.
 Enforcement: `post-stop.sh` check #4, CI.
 
+**REF-003 — CODEX.md Routing Table Resolution** (critical)
+Rule: All agents.md paths referenced in CODEX.md routing tables must exist as files.
+Rationale: CODEX.md is a thin routing adapter over the same governance hierarchy. A broken path creates an ungoverned Codex execution path and defeats the adapter's purpose.
+Enforcement: `post-stop.sh` routing check, CI.
+
+## Tool Adapter Integrity
+
+**ADAPTER-001 — Tool Adapter Consistency** (high)
+Rule: Tool-specific adapter files must route to the same governance sources and must not redefine or contradict root/scoped governance, ADRs, or the invariant registry.
+Rationale: Armature remains single-source-of-truth only if runtime-specific entrypoints stay thin. If `CLAUDE.md` or `CODEX.md` start carrying divergent rules, the framework splits into incompatible governance variants.
+Enforcement: Manual review.
+
 ## Hook Enforcement
 
 **HOOK-001 — Block Destructive Shell Commands** (high)
@@ -84,3 +96,73 @@ Enforcement: `reinject-context.sh` detects compaction events and triggers automa
 Rule: Before an agent edits files within any governed scope it must have read the governing agents.md and all ADRs listed in that file's frontmatter.
 Rationale: Agents that skip required reading may contradict architectural decisions, violate scope restrictions, or produce work that fails review for reasons that were explicitly documented. The advisory surfaces these obligations at the moment they are actionable.
 Enforcement: `check-required-reading.sh` runs at the pre-tool-use hook boundary for write operations and warns — or blocks, depending on configuration — if the required documents have not been read in the current session.
+
+**HOOK-007 — Red-Team Pre-PR Gate** (standard)
+Rule: The `pre-pr-create.sh` hook intercepts `gh pr create` on PreToolUse(Bash) and blocks (exit 2, when `ARMATURE_RED_TEAM_ENFORCE` is set to `1` or `true`) or advises (exit 0, default) when a red-team trigger fired for the current branch but no valid red-team marker exists.
+Rationale: The auto-reviewer (TASK-003) flags a red-team trigger in Phase A (SubagentStop), but prior to HOOK-007 nothing prevented opening a PR in Phase B without acting on that advisory. This gate closes the Phase A→Phase B gap. Advisory-by-default allows soft deployment and zero disruption to existing workflows; operators opt into blocking enforcement via `ARMATURE_RED_TEAM_ENFORCE`, giving teams a graduated adoption path.
+Enforcement: `pre-pr-create.sh` on PreToolUse(Bash); consumes the shared `red_team_check` lib's marker validation (verdict, content_fingerprint, branch). The lib checks for a valid marker file at `.armature/session/red-team-<branch>.json` — valid means verdict ∈ {APPROVED, PASS}, fingerprint matches the current working tree, and the branch matches.
+
+## Lifecycle Gates
+
+**TDD-001 — Test-Driven Development Gate** (high)
+Rule: Source file edits require a matching test file to exist.
+Rationale: Untested code silently accumulates technical debt and regression risk. A gate that blocks source edits without a corresponding test file makes the TDD obligation mechanical rather than advisory, surfacing it at the moment it can be satisfied.
+Enforcement: `tdd-gate.sh` (planned, M3). No mechanical enforcement until M3; currently advisory.
+
+**PHASE-001 — SDLC Phase Gate** (high)
+Rule: Edits must be permitted by the current SDLC phase.
+Rationale: Phase discipline prevents implementation work during design phases, code changes during review freezes, and ad-hoc commits during release windows. A gate that reads the current phase state and blocks prohibited activities makes phase adherence enforceable rather than relying on agent recall.
+Enforcement: `phase-gate.sh` (planned, M3). No mechanical enforcement until M3; current phase stored at `.armature/session/phase`.
+
+**TIER0-001 — Tier-0 Preflight** (high)
+Rule: DOMAIN.md and PROJECT.md must exist at repo root.
+Rationale: The orchestrator requires domain and project context before it can make governance-aware delegation decisions. Absent these files the orchestrator has no authoritative source for project intent, technology choices, or stakeholder expectations, leading to governance-blind execution.
+Enforcement: `tier0-preflight.sh` (planned, M3). No mechanical enforcement until M3.
+
+**TASK-001 — Task Readiness Gate** (standard)
+Rule: Tasks must have acceptance criteria before delegation.
+Rationale: Delegating a task without acceptance criteria gives the implementer no objective measure of completion. This creates ambiguity in reviewer verdicts, risks rework loops, and allows work to close without satisfying the original intent.
+Enforcement: `task-readiness.sh` (planned, M5). No mechanical enforcement until M5.
+
+**TASK-002 — Task Completion Gate** (standard)
+Rule: Deliverables must be auto-verified against acceptance criteria.
+Rationale: Manual completion checks are inconsistent and subject to optimism bias. Auto-verification against the acceptance criteria recorded at task-readiness time closes the loop mechanically and makes the completion decision auditable.
+Enforcement: `task-completion.sh` (planned, M5). No mechanical enforcement until M5.
+
+**TASK-003 — Auto-Reviewer Gate** (standard)
+Rule: Reviewer and (when triggered) red team must auto-fire on SubagentStop.
+Rationale: Requiring the orchestrator to manually invoke the reviewer after every subagent stop creates a process gap — review can be skipped under time pressure or forgotten during recovery. Auto-firing on SubagentStop makes the review loop invariant.
+Enforcement: `auto-reviewer.sh` (planned, M5). No mechanical enforcement until M5.
+
+**CI-001 — CI Pipeline Gate** (high)
+Rule: Full CI pipeline (tests + types + lint + invariants) must run on Stop when code is dirty.
+Rationale: Code that exits a session without passing CI can silently introduce failures that compound across sessions. Gating Stop on a dirty marker ensures no code change closes without machine verification, making CI a session invariant rather than a repository-level convention.
+Enforcement: Extension of `post-stop.sh` (planned, M7). Partial enforcement via existing `post-stop.sh` governance checks; full CI integration lands in M7.
+
+**HOTFIX-001 — Hotfix Audit Trail** (high)
+Rule: Hotfix bypass must produce an audit record and block subsequent normal-phase work until postmortem lands.
+Rationale: Hotfix lanes exist to enable rapid response to critical production issues but are inherently ungoverned departures from the SDLC. Without a mandatory audit record and postmortem gate, hotfixes become normalized shortcuts that erode phase discipline and accumulate unreviewed changes.
+Enforcement: `hotfix-audit.sh` (planned, M8). No mechanical enforcement until M8; severity stays `high` until enforcement is wired.
+
+## Engineering Disciplines
+
+**DISCIPLINE-001 — Discipline Tag Definition** (standard)
+Rule: Persona discipline tags declared in agents.md frontmatter must be defined in the standards corpus.
+Rationale: An undefined discipline tag creates a false governance claim — the orchestrator believes a discipline is active when no corresponding standards file exists to define its traits or trigger conditions. References to undefined disciplines silently degrade governance coverage.
+Enforcement: Orchestrator protocol (no script). The orchestrator must validate discipline-tags against `.armature/disciplines/` during delegation planning.
+
+## Doc-Drift Guardrails
+
+**DRIFT-001 — Invariant-ID Resolution** (standard)
+Rule: Every invariant-shaped token (`[A-Z]{2,}[A-Z0-9]*-\d+`) appearing in governed markdown must resolve against the registry, match a universal allowlist pattern (ADR refs, PR refs, checkpoint / cycle / severity codes, well-known technical standards, spec-illustrative placeholders), or be amended into both — a registry entry for new invariants, an allowlist pattern for new non-invariant nomenclature.
+Rationale: Stale renames, typos, and dangling references silently accumulate in governance prose. A check that flags every invariant-shaped token catches three failure modes the routing-table and frontmatter checks miss: (1) an invariant renamed in the registry but still cited in CLAUDE.md or an ADR by its old name; (2) a future invariant ID cited speculatively in a postmortem or design doc but never registered; (3) a domain-specific finding-code series (e.g. `CTX-NN-XXX`) that should have been added to the allowlist before being used. The check runs at post-stop, so drift is visible at every session boundary rather than only at human review.
+Enforcement: `.armature/hooks/post-stop.sh` section 9 — scans `.armature/**.md` (excluding `session/`, `escalations/`, `reviews/`, `postmortems/`), `docs/adr/*.md`, every `agents.md` / `AGENTS.md` (excluding `.claude/worktrees/`), and top-level `CLAUDE.md` / `CODEX.md` / `AGENTS.md` / `PROJECT.md` / `DOMAIN.md` / `README.md` when present. Unknown tokens FAIL with exit 1.
+
+**DRIFT-002 — Cascade Co-Staging** (standard)
+Rule: When a file matching a cascade rule's `when_touched` pattern is part of a changeset, that rule's declared companions (`must_also_touch` and, when `same_dir_roots` is configured, `must_also_touch_same_dir`) must be part of the same changeset. The canonical rule (`registry-invariants-cascade`) pairs `.armature/invariants/registry.yaml` with `.armature/invariants/invariants.md` so the machine-readable index and the human-readable constraint list always land together.
+Rationale: Some artifacts are coupled — a schema and its docs, a registry and its prose mirror, a manifest and its checksums — such that landing one without the other leaves the repository internally inconsistent. Path-based edit gates (TDD, phase, tier-0) operate file-by-file and cannot see this cross-file coupling. A cascade rule enforces *co-staging* (not correctness): it guarantees the companion was touched in the same changeset, and the reviewer assesses whether the companion change is adequate. Rules are kept to genuinely coupled artifacts so they do not force no-op edits.
+Enforcement is two-layer (defense in depth):
+- **Authoritative — CI backstop.** `.armature/hooks/cascade-ci.sh` runs in CI (`.github/workflows/governance.yml`, job `cascade-backstop`) and evaluates `check-cascade.sh` **per-commit** against the actual committed changeset (`base..head`), with no command-string parsing. This is the layer that guarantees the invariant: a cascade-violating commit fails CI regardless of how it was produced (including forms the PreToolUse gate cannot model — e.g. edit-before-stage `printf … > trigger && git add trigger && git commit`).
+- **Convenience — PreToolUse gate.** `.armature/hooks/precommit-cascade-gate.sh` (PreToolUse(Bash), exit 2 blocks the commit) delegates to `check-cascade.sh` to catch violations *before* they are committed, pre-flighting the file set each commit-producing git form will land (including compound `git add … && git commit`, subshell scope, and prior `cd`) and bypassing recovery commands (`--abort` / `--quit` / `--skip`). It is best-effort: because it runs before the command executes it cannot observe runtime file edits, so it is a fast first line of defense, not the guarantee — the CI backstop is.
+
+`check-cascade.sh` evaluates `.armature/cascade-rules.yaml` and is runnable manually (`bash .armature/hooks/check-cascade.sh --staged-only`). Downstream projects wire the PreToolUse(Bash) gate and the CI backstop via `/armature-init`.

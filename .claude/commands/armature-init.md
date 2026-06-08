@@ -20,6 +20,7 @@ Before discovery, assess the current state of the repository:
 1. **Scan the codebase.** Read the directory tree, READMEs, package manifests, config files, and any existing documentation. Build a mental model of what already exists — structure, languages, frameworks, conventions, test suites, CI configuration.
 2. **Check for existing governance artifacts:**
    - Does a `CLAUDE.md` already exist? → Will need to be merged/replaced in Step 7.
+   - Does a `CODEX.md` already exist? → Will need to be merged/replaced in Step 7.5.
    - Does an `agents.md` or `AGENTS.md` exist? → Incorporate its content into the root governance file, preserving the project's existing filename convention (lowercase or uppercase).
    - Does a `docs/adr/` directory exist with ADRs? → Adopt existing ADRs rather than re-creating.
    - Does a `.claude/` directory exist with agents or commands? → Preserve non-conflicting items.
@@ -114,7 +115,11 @@ Create subagent files in `.claude/agents/` for implementers, reviewer, and plann
 
 **If `.claude/agents/` already exists** with other subagent definitions, preserve them. Armature subagents are additive.
 
-### Step 7: CLAUDE.md
+### Step 7: Tool Adapter Entrypoints
+
+Create or update both runtime adapter entrypoints from the same shared governance sources.
+**CLAUDE.md**
+
 **If a CLAUDE.md already exists:**
 - Read its current content. Identify project-specific instructions, conventions, or context worth preserving.
 - Generate the new CLAUDE.md with the Armature structure, incorporating preserved content into the appropriate sections (project overview, quick reference, etc.).
@@ -129,6 +134,21 @@ Generate root `CLAUDE.md` (~200 lines) with:
 - Meta-instruction including commit protocol summary and journal recovery directive.
 - Agent workflow topology (brief description of the pipeline and personas)
 - Quick reference (build, test, deploy commands from the tech stack)
+
+**CODEX.md**
+
+**If a `CODEX.md` already exists:**
+- Read its current content. Identify project-specific instructions or Codex-specific workflow notes worth preserving.
+- Generate the new `CODEX.md` with the Armature Codex adapter structure, incorporating preserved content into the appropriate sections.
+- Inform the human what was preserved and what was replaced. Confirm before writing.
+
+**If no `CODEX.md` exists:**
+Generate root `CODEX.md` using `.armature/templates/CODEX.md.tmpl`. It should:
+- Direct Codex to use `.armature/personas/orchestrator.md` as the workflow model
+- Explain Codex-native equivalents for Claude-only mechanics (slash commands, settings-based hook wiring, `.claude/agents/` subagent wiring)
+- Include critical invariants and a routing table that maps scopes to `agents.md`, ADRs, and implementer persona files
+- Instruct Codex to run `bash .armature/hooks/post-stop.sh` before reporting completion after governed changes
+- Include a setup prerequisite noting that Codex requires `project_doc_fallback_filenames = ["CODEX.md"]` in `.codex/config.toml` to discover this file
 
 ### Step 8: Gitignore and Directory Markers
 
@@ -169,6 +189,62 @@ Armature ships with mechanical enforcement hooks in `.armature/hooks/` and a wir
    - **ConfigChange:** `block-config-changes.sh` — prevents agent self-governance modification
 4. With human confirmation, merge the hook entries from the template into `.claude/settings.json`.
 5. If the human declines hook wiring (e.g., wants to evaluate first), note this as a TODO in the journal.
+
+### Step 8.7: CI Review Pipeline (Optional)
+
+Armature provides an optional automated PR review-fix pipeline. Ask the human whether they want it.
+
+**Questions to ask:**
+
+1. "Do you want an automated CI pipeline that fixes PR review comments from code review bots?" (yes/no)
+
+If yes, continue with these questions:
+
+2. "API key auth or GitHub App auth?"
+   - **API key** (`api-key`): Uses `ANTHROPIC_API_KEY` repo secret. Supports model selection. Requires separate Anthropic API billing.
+   - **GitHub App** (`github-app`): Uses the Claude GitHub App. No API key needed. No model control.
+
+3. "Which code review bots do you use?" Collect bot names (GitHub login format, e.g., `greptile-apps[bot]`, `chatgpt-codex-connector[bot]`).
+
+4. For each bot: "Does this bot produce a score rating (e.g., 3/5)?"
+   - If yes → type: `score-gated`. Ask for the score threshold (default: 4) and the regex pattern to extract the score (default: `(\d)\s*/\s*5`).
+   - If no → type: `direct`. Ask if it acknowledges with an emoji reaction (default: `eyes`), timeout (default: 20s), and retries (default: 5).
+
+5. "After the score-gated bot passes, which bot should do the final review?" Collect **both**: (a) the reviewer's **bot login** (GitHub login format, e.g., `chatgpt-codex-connector[bot]`) → `final-reviewer`, and (b) the **trigger text** that invokes it (e.g., `@codex review this`) → `final-reviewer-trigger`. The login is what `/resolve`'s clean-pass rule matches on (it skips re-requesting a reviewer that already passed); the trigger is the comment text the CI workflow posts.
+
+6. "What test command should Claude run after fixing?" (e.g., `python -m pytest`, `npm test`). This is project-specific.
+
+7. "Which Claude model should the CI use?" (default: `claude-sonnet-4-6`). Only relevant for `api-key` auth.
+
+**Populate config.yaml:**
+
+Fill in the `governance.ci-review-pipeline` section with the collected answers. In particular, `final-reviewer` and `final-reviewer-trigger` are distinct fields: set `final-reviewer` to the final reviewer's **bot login** (Q5a) — this identifies the reviewer and is consumed by `/resolve`'s clean-pass rule — and set `final-reviewer-trigger` to its **trigger text** (Q5b), the comment text the workflow posts.
+
+**Generate workflow:**
+
+1. Read `.armature/templates/claude-pr-fix.yml.tmpl`
+2. Substitute all `{{placeholder}}` values from the config:
+   - `{{REVIEW_BOT_NAMES}}` — Build the GitHub Actions `if` condition from bot names (e.g., `github.event.comment.user.login == 'greptile-apps[bot]' || github.event.comment.user.login == 'codex[bot]'`)
+   - `{{REVIEW_BOT_NAMES_JS}}` — JS array literal (e.g., `["greptile-apps[bot]", "chatgpt-codex-connector[bot]"]`)
+   - `{{AUTH_SECTION}}` — For `api-key`: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`. For `github-app`: omit (the app handles auth).
+   - `{{MODEL}}`, `{{MAX_TURNS}}`, `{{BATCH_WAIT_SECONDS}}`, `{{TEST_COMMAND}}` — direct from config
+   - `{{SCORE_GATED_BOT}}` — login of the score-gated bot
+   - `{{SCORE_PATTERN}}`, `{{SCORE_THRESHOLD}}` — from the score-gated bot config
+   - `{{FINAL_REVIEWER_TRIGGER}}` — from config
+   - `{{DIRECT_BOT_ACK_EMOJI}}`, `{{DIRECT_BOT_ACK_TIMEOUT}}`, `{{DIRECT_BOT_ACK_RETRIES}}` — from the direct-type bot config
+   - `{{SOURCE_FILE_EXTENSIONS}}` — derive from `stack.languages` (e.g., Python → `[".py", ".json"]`, JS → `[".js", ".ts", ".json"]`)
+   - `{{SCORE_GATED_BOT_SHORT}}` — bot name without `[bot]` suffix for @mention (e.g., `greptile`)
+   - `{{ALLOWED_BOTS}}` — comma-separated list of all review bot logins plus `github-actions[bot]` (e.g., `greptile-apps[bot],chatgpt-codex-connector[bot],github-actions[bot]`). Required because the Claude Code Action blocks bot-triggered events by default.
+   - If no score-gated bot is configured, remove the `check-score-gate` and `post-fix-rereview` jobs entirely
+3. Create `.github/workflows/` directory if it doesn't exist
+4. Write `.github/workflows/claude-pr-fix.yml`
+5. If `api-key` auth: remind the human to add `ANTHROPIC_API_KEY` to GitHub repo secrets
+6. If `github-app` auth: remind the human to install the Claude GitHub App
+
+**If the human declines CI pipeline:**
+- Set `governance.ci-review-pipeline.enabled: false` in config.yaml
+- Skip workflow generation
+- Note in journal: "CI review pipeline declined during init"
 
 ### Step 9: Taskmaster
 **If `.taskmaster/` already exists:**
@@ -221,9 +297,12 @@ Confirm with the human:
 - All foundational decisions are captured as ADRs (existing adopted + newly created)
 - All hard constraints are in the invariant registry
 - CLAUDE.md routing table is complete
+- CODEX.md routing table is complete
 - Persona files exist for all components
 - The Taskmaster task graph is confirmed and ready for execution
 - Hook wiring in `.claude/settings.json` matches `.armature/templates/settings-hooks.json.tmpl` (or TODO noted in journal if human declined)
+- If CODEX.md was generated, remind the human that `.codex/config.toml` must include `project_doc_fallback_filenames = ["CODEX.md"]` for Codex to discover it
+- Optionally offer to create `.codex/hooks.json` from `.armature/templates/codex-hooks.json.tmpl` for experimental Codex hook wiring (note this in journal if declined)
 - Pre-Armature baseline is tagged (`armature/pre-init`)
 
 Tag the initial Armature build candidate: `bc/{today's date}/000`.

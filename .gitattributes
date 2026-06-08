@@ -1,0 +1,54 @@
+# Force source files to be classified as text so that git diff and numstat
+# report line counts even if a stray non-printable byte slipped into a
+# comment. Without this, a lone NUL in source can flip git's auto-detection
+# and hide the entire file from textual diff/grep.
+#
+# Coverage matches phase-gate.sh's source-file classifier so any file the
+# governance hooks consider "source" stays diff-visible.
+
+# Shell + scripting
+*.sh        text eol=lf
+*.bash      text eol=lf
+
+# Python
+*.py        text eol=lf
+
+# Web / TypeScript / JavaScript
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+
+# Other compiled / scripted source languages
+*.go        text eol=lf
+*.rs        text eol=lf
+*.java      text eol=lf
+*.rb        text eol=lf
+*.c         text eol=lf
+*.cpp       text eol=lf
+*.h         text eol=lf
+*.hpp       text eol=lf
+
+# Config / data
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+*.toml      text eol=lf
+*.ini       text eol=lf
+*.cfg       text eol=lf
+*.tmpl      text eol=lf
+*.md        text eol=lf
+
+# Note: .env intentionally omitted. Some env files legitimately carry
+# binary-encoded secrets or non-UTF-8 bytes; forcing text classification
+# could mangle them. Leave to git's auto-detection.
+
+# Binary categories — keep git from line-ending-mangling these.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary

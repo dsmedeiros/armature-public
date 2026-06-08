@@ -1,0 +1,73 @@
+# Armature cascade rules — Tier 2 enforcement (DRIFT-002)
+# Schema version: 1
+#
+# A cascade rule declares an atomic-landing requirement: when a file matching
+# `when_touched` is part of a changeset, every companion in `must_also_touch`
+# (and, if configured, `must_also_touch_same_dir`) must also be in the same
+# changeset. Rules with severity=blocking cause check-cascade.sh to exit
+# non-zero, which the PreToolUse(Bash) gate (precommit-cascade-gate.sh)
+# propagates to block the commit until the companion files are staged too.
+#
+# This catches a class of doc/code drift that path-based edits alone miss: a
+# change to a "source of truth" file (a schema, a registry, a manifest) that
+# requires a coordinated update to a derived or paired file, where landing one
+# without the other leaves the repository internally inconsistent.
+#
+# ── Schema ──────────────────────────────────────────────────────────────────
+#
+# version: 1                      (integer; schema version)
+# same_dir_roots: [<dir>, ...]    (optional list; see must_also_touch_same_dir)
+# rules:
+#   - name: <unique-string>       (required)
+#     when_touched:               (required, non-empty list of glob patterns)
+#       - "<glob>"                  matched against changeset paths with
+#                                   fnmatch.fnmatchcase (** matches across /)
+#     must_also_touch:            (list of exact repo-relative paths; optional
+#       - "<path>"                  if must_also_touch_same_dir is present)
+#     must_also_touch_same_dir:   (optional list of FILENAMES that must exist in
+#       - "<filename>"              the same scope-root directory as the matched
+#                                   path; see resolution rule below)
+#     reason: "<why>"             (required; shown in the FAIL message)
+#     severity: blocking|advisory (default: blocking; only blocking rules FAIL)
+#
+# Each rule must declare at least one of `must_also_touch` /
+# `must_also_touch_same_dir`.
+#
+# ── must_also_touch_same_dir resolution ──────────────────────────────────────
+#
+# `must_also_touch_same_dir` requires a named file to exist in the SAME
+# scope-root directory as the triggered path. A "scope root" is the directory
+# `<parent>/<name>` where `<parent>` is one of the top-level directories listed
+# in the top-level `same_dir_roots` key. Example: with
+# `same_dir_roots: [packages]` and a triggered path
+# `packages/foo/src/x.py`, the scope root is `packages/foo`, and a
+# `must_also_touch_same_dir: [CHANGELOG.md]` companion resolves to
+# `packages/foo/CHANGELOG.md`.
+#
+# `same_dir_roots` defaults to empty, which makes `must_also_touch_same_dir`
+# inert (no scope root can be resolved). Projects that want same-directory
+# companion enforcement opt in by listing their top-level scope parents here.
+# The canonical Armature repository does not use this feature; the rule below
+# uses only exact `must_also_touch` paths.
+#
+# ── Operating notes ──────────────────────────────────────────────────────────
+#
+# Path-based triggering cannot distinguish a substantive change from an
+# unrelated bugfix in the same file. A cascade rule therefore enforces
+# *co-staging*, not *correctness*: it guarantees the companion file was touched,
+# and the reviewer assesses whether the companion change is actually adequate.
+# Keep rules to genuinely coupled artifacts to avoid forcing no-op edits.
+
+version: 1
+
+# No same-directory companion enforcement in canonical Armature.
+same_dir_roots: []
+
+rules:
+  - name: registry-invariants-cascade
+    when_touched:
+      - ".armature/invariants/registry.yaml"
+    must_also_touch:
+      - ".armature/invariants/invariants.md"
+    reason: "Invariant registry changes (add / rename / retire) require a matching update to invariants.md (DRIFT-002). The registry.yaml + invariants.md pair is the canonical governance artifact: the machine-readable index and its human-readable constraint list must land together so neither drifts from the other."
+    severity: blocking

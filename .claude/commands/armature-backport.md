@@ -25,7 +25,7 @@ If no argument is provided, ask the human for the path to the canonical Armature
 - `.armature/personas/reviewer.md` — reviewer persona
 - `.armature/personas/reviewer-redteam.md` — red team reviewer persona
 - `.armature/personas/planner.md` — planner persona
-- `.armature/templates/` — all template files (adr.md.tmpl, agents.md.tmpl, persona.md.tmpl, settings-hooks.json.tmpl)
+- `.armature/templates/` — all template files (adr.md.tmpl, agents.md.tmpl, CODEX.md.tmpl, codex-hooks.json.tmpl, persona.md.tmpl, settings-hooks.json.tmpl, claude-pr-fix.yml.tmpl)
 - `.armature/hooks/` — all hook scripts:
   - `post-stop.sh` — on-stop governance validation + conditional test runner
   - `block-dangerous-commands.sh` — PreToolUse(Bash) destructive command guard
@@ -57,6 +57,7 @@ If no argument is provided, ask the human for the path to the canonical Armature
 - `.armature/reviews/` — review verdicts
 - `.claude/agents/*-impl.md` — implementer subagent wiring
 - `CLAUDE.md` — project orchestrator entry point
+- `CODEX.md` — project Codex adapter entry point
 - `agents.md` / `AGENTS.md` — project root directives (either casing)
 - `*/agents.md` / `*/AGENTS.md` — scoped directives (either casing)
 - `docs/adr/*.md` — project ADRs
@@ -166,6 +167,28 @@ New framework-generic files (especially scoped `agents.md` files like `.armature
 
 Update the `armature-version` field in the project's `.armature/config.yaml` to match the canonical version. If the field doesn't exist, add it.
 
+### Step 8.5: CI Review Pipeline Regeneration
+
+If the canonical repo includes `.armature/templates/claude-pr-fix.yml.tmpl`:
+
+1. **Check if the project has CI enabled:** Read the project's `config.yaml` for `governance.ci-review-pipeline.enabled`.
+
+2. **If enabled (`true`):**
+   - Read the (just-updated) template from `.armature/templates/claude-pr-fix.yml.tmpl`
+   - Read the project's CI config from `governance.ci-review-pipeline` in `config.yaml`
+   - Regenerate `.github/workflows/claude-pr-fix.yml` by substituting all `{{placeholder}}` values from the config (same substitution process as `/armature-init` Step 8.7)
+   - Report to the human what changed in the workflow
+   - If the template introduced new placeholders that the project's config doesn't have values for, list them and ask the human to provide values
+
+3. **If disabled (`false`) or field missing (older project):**
+   - Note to the human: "The canonical Armature now includes an optional CI review pipeline that automates PR review-fix cycles with code review bots (Greptile, Codex, etc.). Would you like to enable it?"
+   - If the human says yes, run the CI question flow from `/armature-init` Step 8.7, populate config, and generate the workflow
+   - If the human declines, skip — no workflow generated
+
+4. **If the project has a `.github/workflows/claude-pr-fix.yml` that was manually created (not from the template):**
+   - Warn the human that the backport template may differ from their manual workflow
+   - Ask whether to replace or keep the existing workflow
+
 ### Step 9: Verify
 
 Run `bash .armature/hooks/post-stop.sh` to confirm governance integrity after the backport.
@@ -182,7 +205,7 @@ If validation fails:
 **Additional verification:**
 - Confirm all invariant IDs in agents.md files resolve to registry entries (Step 7 should have caught this, but verify mechanically)
 - Confirm config.yaml has all fields required by the updated ARMATURE.md spec
-- **Routing table completeness:** List all `agents.md` files in the project. For each one, verify it appears in the CLAUDE.md routing table. Report any `agents.md` files that exist but have no routing table entry. These may be pre-existing gaps rather than backport regressions, but should be resolved while governance is being audited.
+- **Routing table completeness:** List all `agents.md` files in the project. For each one, verify it appears in the CLAUDE.md routing table, and in the CODEX.md routing table when `CODEX.md` exists. Report any `agents.md` files that exist but have no routing table entry. These may be pre-existing gaps rather than backport regressions, but should be resolved while governance is being audited.
 - **Hook file completeness:** List all `.sh` files in `.armature/hooks/`. Verify each one is referenced in the invariant registry's `enforced-by` fields. Report any hooks that exist as files but have no registry entry.
 
 ### Step 10: Log

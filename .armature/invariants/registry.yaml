@@ -15,6 +15,7 @@ invariants:
     referenced-in:
       - .armature/invariants/invariants.md
       - .armature/agents.md
+      - .armature/ARMATURE.md
       - CLAUDE.md
     exceptions: []
 
@@ -31,6 +32,7 @@ invariants:
     referenced-in:
       - .armature/invariants/invariants.md
       - .armature/agents.md
+      - .armature/ARMATURE.md
       - .claude/commands/agents.md
       - .claude/agents/agents.md
       - CLAUDE.md
@@ -106,6 +108,43 @@ invariants:
       - .armature/invariants/invariants.md
       - .armature/agents.md
       - CLAUDE.md
+    exceptions: []
+
+  ADAPTER-001:
+    name: "Tool adapter consistency"
+    severity: high
+    description: "Tool-specific adapter files must route to the shared governance sources and must not redefine or contradict them."
+    rule: "Tool-specific adapter files must route to the same governance sources and must not redefine or contradict root/scoped governance, ADRs, or the invariant registry."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0002-tool-adapters-and-codex-support.md
+    enforced-by:
+      ci: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - .claude/agents/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  REF-003:
+    name: "CODEX.md routing table integrity"
+    severity: critical
+    description: "All governance file (agents.md/AGENTS.md) paths in CODEX.md routing tables must exist as files to prevent dead references."
+    rule: "All governance file paths referenced in CODEX.md routing tables must exist as files."
+    status: active
+    superseded-by: null
+    defined-in: docs/adr/0002-tool-adapters-and-codex-support.md
+    enforced-by:
+      ci:
+        - .armature/hooks/post-stop.sh
+        - .github/workflows/governance.yml
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
     exceptions: []
 
   HOOK-001:
@@ -209,4 +248,263 @@ invariants:
       - .armature/invariants/invariants.md
       - .armature/agents.md
       - CLAUDE.md
+    exceptions: []
+
+  HOOK-007:
+    name: "Red-team pre-PR gate"
+    severity: standard
+    description: "When a red-team review was triggered for a changeset but no valid red-team marker exists, gh pr create must be gated (advisory by default; blocking when ARMATURE_RED_TEAM_ENFORCE is set)."
+    rule: "The pre-pr-create.sh hook must intercept gh pr create on PreToolUse(Bash) and block (when ARMATURE_RED_TEAM_ENFORCE in {1,true}) or advise (default) when a red-team trigger fired but no valid red-team marker exists."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      hooks:
+        - .armature/hooks/pre-pr-create.sh
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  TDD-001:
+    name: "Test-driven development gate"
+    severity: high
+    description: "Source file edits require a matching test file to exist to prevent untested code from entering the codebase."
+    rule: "Source file edits require a matching test file to exist."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/tdd-gate.sh
+      startup: []
+      runtime: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  PHASE-001:
+    name: "SDLC phase gate"
+    severity: high
+    description: "Edits must be permitted by the current SDLC phase to enforce phase discipline across the development lifecycle."
+    rule: "Edits must be permitted by the current SDLC phase."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/phase-gate.sh
+      startup: []
+      runtime: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  TIER0-001:
+    name: "Tier-0 preflight"
+    severity: high
+    description: "DOMAIN.md and PROJECT.md must exist at repo root so the orchestrator has required context before any delegation."
+    rule: "DOMAIN.md and PROJECT.md must exist at repo root."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/tier0-preflight.sh
+      startup: []
+      runtime: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  TASK-001:
+    name: "Task readiness gate"
+    severity: standard
+    description: "Tasks must have acceptance criteria before delegation to prevent ambiguous or incomplete work assignments."
+    rule: "Tasks must have acceptance criteria before delegation."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/task-readiness.sh
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  TASK-002:
+    name: "Task completion gate"
+    severity: standard
+    description: "Deliverables must be auto-verified against acceptance criteria to prevent incomplete or incorrect work from being accepted."
+    rule: "Deliverables must be auto-verified against acceptance criteria."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/task-completion.sh
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  TASK-003:
+    name: "Auto-reviewer gate"
+    severity: standard
+    description: "Reviewer and (when triggered) red team must auto-fire on SubagentStop to ensure all deliverables receive governance review."
+    rule: "Reviewer and (when triggered) red team must auto-fire on SubagentStop."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/auto-reviewer.sh
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  CI-001:
+    name: "CI pipeline gate"
+    severity: high
+    description: "Full CI pipeline (tests, types, lint, invariants) must run on Stop when code is dirty to prevent ungated code from closing a session."
+    rule: "Full CI pipeline (tests + types + lint + invariants) must run on Stop when code is dirty."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - ".armature/hooks/run-ci.sh"
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  HOTFIX-001:
+    name: "Hotfix audit trail"
+    severity: high
+    description: "Hotfix bypass must produce an audit record and block subsequent normal-phase work until postmortem lands."
+    rule: "Hotfix bypass must produce an audit record and block subsequent normal-phase work until postmortem lands."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks: []
+      startup: []
+      runtime: []
+    planned-enforcement:
+      - .armature/hooks/hotfix-audit.sh  # M8
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  DISCIPLINE-001:
+    name: "Discipline tag definition"
+    severity: standard
+    description: "Persona discipline tags declared in agents.md frontmatter must be defined in the standards corpus to prevent references to undefined disciplines."
+    rule: "Persona discipline tags declared in agents.md frontmatter must be defined in the standards corpus."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks: []
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  DRIFT-001:
+    name: "Invariant-ID resolution"
+    severity: standard
+    description: "Every invariant-shaped token ([A-Z]{2,}[A-Z0-9]*-\\d+) appearing in governed markdown must resolve against the registry, the universal allowlist (ADR/PR/checkpoint/cycle/severity/technical-standard patterns), or be amended into both. Catches typos, stale renames, and dangling references in governance prose."
+    rule: "Tokens that look like invariant IDs in governed markdown must resolve against the registry or match the universal allowlist."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci: []
+      hooks:
+        - .armature/hooks/post-stop.sh
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
+    exceptions: []
+
+  DRIFT-002:
+    name: "Cascade co-staging"
+    severity: standard
+    description: "When a file matching a cascade rule's when_touched pattern is in a changeset, the rule's declared companions (must_also_touch / must_also_touch_same_dir) must be in the same changeset. Enforces atomic landing of coupled source-of-truth and derived artifacts; the canonical rule pairs registry.yaml with invariants.md."
+    rule: "Cascade rules in .armature/cascade-rules.yaml must be satisfied — every triggered rule's companion files must be co-staged in the same changeset."
+    status: active
+    superseded-by: null
+    defined-in: .armature/ARMATURE.md
+    enforced-by:
+      ci:
+        - .armature/hooks/cascade-ci.sh
+        - .github/workflows/governance.yml
+      hooks:
+        - .armature/hooks/check-cascade.sh
+        - .armature/hooks/precommit-cascade-gate.sh
+      startup: []
+      runtime: []
+    planned-enforcement: []
+    referenced-in:
+      - .armature/invariants/invariants.md
+      - .armature/agents.md
+      - CLAUDE.md
+      - CODEX.md
     exceptions: []

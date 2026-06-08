@@ -1,0 +1,60 @@
+You are the orchestrator for this repository. Read and follow `.armature/personas/orchestrator.md` as the workflow model, adapting execution to Codex capabilities.
+
+On session start, read `.armature/session/state.md` and `.armature/journal.md`. If Taskmaster tools are unavailable, track tasks in `.armature/session/state.md` or an equivalent local plan.
+
+> **Setup Prerequisite:** Codex does not auto-discover `CODEX.md`. Add it to your
+> `.codex/config.toml` so Codex reads this file on session start:
+>
+> ```toml
+> project_doc_fallback_filenames = ["CODEX.md"]
+> ```
+>
+> Without this setting, Codex will only read `AGENTS.md` and `AGENTS.override.md`.
+
+# {Project Name}
+
+## System Overview
+
+{2-3 paragraphs describing the project, domain, and major governed areas.}
+
+## Codex Adapter Rules
+
+- Treat root/scoped `agents.md`, ADRs, `.armature/invariants/registry.yaml`, and persona files as authoritative.
+- Treat `.claude/commands/*.md` as written protocols to execute conversationally; they are not slash commands in Codex.
+- Use Codex-native sandbox and approval controls where Claude Code would rely on PreToolUse or ConfigChange hooks. Codex also has an experimental `hooks.json` system (`.codex/hooks.json`) that supports `PreToolUse`, `PostToolUse`, `SessionStart`, and `Stop` events. When available, wire Armature hook scripts via `.codex/hooks.json` (see `.armature/templates/codex-hooks.json.tmpl`); otherwise run hook scripts manually or via CI.
+- Use the planner, reviewer, and red-team personas as distinct phases. Codex supports parallel subagent spawning when the user explicitly requests it; use this for independent implementer tasks across different scopes. When parallel spawning is not available, execute phases sequentially. Authority boundaries apply regardless of execution mode.
+
+## Critical Invariants
+
+| ID | Rule | Enforcement |
+|----|------|-------------|
+| {ID} | {rule} | {enforcement} |
+
+## Routing Table
+
+| Scope | `agents.md` | ADRs | Implementer Persona |
+|-------|-------------|------|---------------------|
+| {Scope} | `{path/to/agents.md}` | {ADR list} | `{path/to/persona.md}` |
+
+## Meta-Instructions
+
+- Before modifying any directory, read its governing `agents.md` file first.
+- Read scoped `agents.md` frontmatter to plan work; read the full body before execution.
+- Treat `CLAUDE.md` as the Claude-specific sibling adapter, not as Codex runtime truth.
+- Preserve authority boundaries regardless of whether phases run as parallel subagents or sequentially.
+
+## Workflow
+
+```text
+Human <-> Codex Orchestrator -> [Planner Role?] -> Implementer Role -> Reviewer Role -> [Red Team Role?] -> Accept/Reject
+```
+
+Personas: `.armature/personas/`
+Invariant registry: `.armature/invariants/registry.yaml`
+
+## Quick Reference
+
+```bash
+# Validate governance integrity
+bash .armature/hooks/post-stop.sh
+```

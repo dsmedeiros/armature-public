@@ -1,0 +1,19 @@
+# Armature CI Pipeline Configuration
+# Read by .armature/hooks/run-ci.sh on the Stop event.
+# Set a step's `command` to null (or omit the step) to skip it.
+# See .armature/session/m7-plan.md §D2 for the full schema.
+
+test:
+  command: "python -m pytest .armature/tests/ -q"
+  timeout_seconds: 600
+
+types:
+  command: null
+
+lint:
+  command: null
+
+invariants:
+  # post-stop.sh already runs before run-ci.sh in the Stop block;
+  # this would be a redundant invocation. Set to null for self-hosting.
+  command: null

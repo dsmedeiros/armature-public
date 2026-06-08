@@ -24,3 +24,59 @@ jobs:
 
       - name: Run Armature governance validation
         run: bash .armature/hooks/post-stop.sh
+
+  # Tests the governance hook scripts themselves (block-dangerous-commands.sh,
+  # block-config-changes.sh, mark-dirty.sh, inject-context.sh,
+  # reinject-context.sh, check-required-reading.sh, post-stop.sh).
+  # Runs in parallel with validate-governance — either job can fail independently.
+  hook-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install "pytest>=8.0" "pyyaml>=6.0"
+
+      - name: Run hook test suite
+        run: python -m pytest .armature/tests/ -x --tb=short -q
+
+  # DRIFT-002 authoritative backstop: evaluate cascade rules against the ACTUAL
+  # committed changeset (per-commit), independent of the PreToolUse gate's
+  # command-string parsing. This is the layer that catches any cascade-violating
+  # commit regardless of how it was produced (edit-before-stage, exotic shell
+  # forms, etc.). Needs full history to resolve the base..head range.
+  cascade-backstop:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Determine commit range
+        id: range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "range=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "range=${{ github.event.before }}..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cascade backstop (DRIFT-002)
+        run: bash .armature/hooks/cascade-ci.sh "${{ steps.range.outputs.range }}"

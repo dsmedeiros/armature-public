@@ -1,5 +1,5 @@
 {
-  "_comment": "Armature hook wiring template for Claude Code settings.json. Copy relevant entries into your project's .claude/settings.json under the 'hooks' key. Adjust paths if your .armature directory is in a non-standard location.",
+  "_comment": "Armature hook wiring template for Claude Code settings.json. Copy relevant entries into your project's .claude/settings.json under the 'hooks' key. Path resolution: commands use \"${CLAUDE_PROJECT_DIR}\" (Claude Code env var, expanded by the shell at hook-invocation time) so they resolve against the project root regardless of the agent's current working directory. The env var is WRAPPED IN DOUBLE QUOTES per the Claude Code hook reference (https://code.claude.com/docs/en/hooks#reference-scripts-by-path) so paths containing spaces or shell metacharacters survive bash word-splitting (e.g. /Users/me/My Project/.armature/...). Timeouts: integer SECONDS per the Claude Code hook docs (NOT milliseconds — 5000 here would be 83 minutes, not 5 seconds).",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,8 +7,30 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/block-dangerous-commands.sh",
-            "timeout": 5000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/block-dangerous-commands.sh",
+            "timeout": 5
+          },
+          {
+            "_comment": "DRIFT-002 cascade gate: blocks commit-producing git commands when a cascade rule's companion files are not co-staged. Delegates to check-cascade.sh against .armature/cascade-rules.yaml. Exits 0 (allow) for all non-commit commands. Remove this entry if the project defines no cascade rules.",
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/precommit-cascade-gate.sh",
+            "timeout": 15
+          },
+          {
+            "_comment": "HOOK-007 red-team pre-PR gate: intercepts `gh pr create`; advisory by default (exit 0 with stderr warning), BLOCKS (exit 2) only when ARMATURE_RED_TEAM_ENFORCE in {1,true} AND a red-team trigger fired but no valid marker exists; consumes the shared red_team_check lib; remove this entry if the project does not use red-team PR gating.",
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/pre-pr-create.sh",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/task-readiness.sh",
+            "timeout": 5
           }
         ]
       },
@@ -17,8 +39,23 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/check-required-reading.sh",
-            "timeout": 5000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/check-required-reading.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/tier0-preflight.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/tdd-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/phase-gate.sh",
+            "timeout": 5
           }
         ]
       }
@@ -29,8 +66,24 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/mark-dirty.sh",
-            "timeout": 5000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/mark-dirty.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "_comment": "Per Claude Code hooks docs, SubagentStop is non-blocking and its stdout does NOT reach the parent (orchestrator) session. To inject task-completion (TASK-002) and auto-reviewer (TASK-003) advisories back into the orchestrator's context, the documented channel is PostToolUse matched to the Agent tool, which fires in the parent's execution context and supports additionalContext injection via the hookSpecificOutput envelope.",
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/task-completion.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/auto-reviewer.sh",
+            "timeout": 5
           }
         ]
       }
@@ -40,19 +93,30 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/post-stop.sh",
-            "timeout": 120000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/post-stop.sh",
+            "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/run-ci.sh",
+            "timeout": 1200
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/harness-feedback.sh",
+            "timeout": 10
           }
         ]
       }
     ],
     "SubagentStop": [
       {
+        "_comment": "SubagentStop is non-blocking and cannot inject context into the parent session, so task-completion.sh and auto-reviewer.sh are wired under PostToolUse(Agent) above. post-stop.sh remains here because it performs governance validation (invariants, registry/config schema) whose result is communicated to the user via the exit code and stderr ADVISORY/FAIL messages, not via parent-session context injection.",
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/post-stop.sh",
-            "timeout": 120000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/post-stop.sh",
+            "timeout": 120
           }
         ]
       }
@@ -62,8 +126,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/inject-context.sh",
-            "timeout": 10000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/inject-context.sh",
+            "timeout": 10
           }
         ]
       }
@@ -74,8 +138,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/reinject-context.sh",
-            "timeout": 10000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/reinject-context.sh",
+            "timeout": 10
           }
         ]
       }
@@ -85,8 +149,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .armature/hooks/block-config-changes.sh",
-            "timeout": 5000
+            "command": "bash \"${CLAUDE_PROJECT_DIR}\"/.armature/hooks/block-config-changes.sh",
+            "timeout": 5
           }
         ]
       }

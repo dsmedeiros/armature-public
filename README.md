@@ -2,7 +2,7 @@
 
 **Agentic Repository Management Architecture**
 
-Version 1.0.0 | Dave Medeiros / Panoptic Systems
+Version 1.2.0 | Dave Medeiros / Panoptic Systems
 
 ---
 
@@ -13,17 +13,19 @@ Armature is not a framework or a library. It is a structural methodology encoded
 ## Quick Start
 
 1. Copy the `.armature/` directory, `.claude/` directory, and `docs/` directory into your project root
-2. Run `/armature-init` in Claude Code to initialize the scaffold for your project
-3. The orchestrator will guide you through project discovery and generate all governance files (CLAUDE.md, agents.md, scoped agents.md, ADRs, invariants, personas)
-4. To upgrade later: run `/armature-backport <path-to-canonical-armature-repo>`
+2. In Claude Code, run `/armature-init` to initialize the scaffold for your project
+3. In Codex, ask the agent to execute the protocol in `.claude/commands/armature-init.md`
+4. The orchestrator will guide you through project discovery and generate all governance files (`CLAUDE.md`, `CODEX.md`, `agents.md`, scoped agents.md, ADRs, invariants, personas)
+5. To upgrade later: run `/armature-backport <path-to-canonical-armature-repo>` in Claude Code, or ask Codex to follow `.claude/commands/armature-backport.md`
 
 ## Repository Structure
 
-```
+```text
 armature/
 ├── README.md                           <- You are here
 ├── LICENSE                             <- Apache 2.0
-├── CLAUDE.md                           <- Orchestrator entry point (live, not template)
+├── CLAUDE.md                           <- Claude Code adapter entry point
+├── CODEX.md                            <- Codex adapter entry point
 ├── agents.md                           <- Root development directives (live)
 ├── .armature/
 │   ├── ARMATURE.md                     <- Full specification (the source of truth)
@@ -32,17 +34,18 @@ armature/
 │   ├── journal.md                      <- Governance journal (committed, append-only)
 │   ├── .gitignore                      <- Ephemeral state exclusions
 │   ├── personas/
-│   │   ├── orchestrator.md             <- Orchestrator persona (main agent)
+│   │   ├── orchestrator.md             <- Orchestrator persona
 │   │   ├── reviewer.md                 <- Compliance reviewer persona
 │   │   ├── reviewer-redteam.md         <- Adversarial red team reviewer persona
 │   │   ├── planner.md                  <- Opt-in planner persona
-│   │   └── implementers/              <- Per-component implementer personas
+│   │   └── implementers/               <- Per-component implementer personas
 │   ├── invariants/
 │   │   ├── registry.yaml               <- Machine-readable invariant index
 │   │   └── invariants.md               <- Human-readable invariant list
 │   ├── templates/
 │   │   ├── adr.md.tmpl                 <- Architecture Decision Record template
 │   │   ├── agents.md.tmpl              <- Scoped agents.md template
+│   │   ├── CODEX.md.tmpl               <- Codex adapter template
 │   │   └── persona.md.tmpl             <- Implementer persona template
 │   ├── hooks/
 │   │   └── post-stop.sh                <- Mechanical validation hook
@@ -70,28 +73,53 @@ armature/
 │       └── governance.yml              <- CI: governance validation on push/PR
 └── docs/
     └── adr/
-        └── 0001-governance-as-files.md <- Core architectural decision
+        ├── 0001-governance-as-files.md <- Core architectural decision
+        └── 0002-tool-adapters-and-codex-support.md
 ```
+
+## Tool Adapters
+
+Armature now ships tool adapters for both Claude Code and Codex. Shared governance stays in root/scoped `agents.md`, ADRs, persona files, and `.armature/invariants/registry.yaml`.
+
+- `CLAUDE.md` is the Claude-specific routing layer.
+- `CODEX.md` is the Codex-specific routing layer.
+- **Codex setup:** Codex does not auto-discover `CODEX.md`. Add `project_doc_fallback_filenames = ["CODEX.md"]` to `.codex/config.toml`.
+- `.claude/commands/*.md` remain the written operational protocols. In Codex they are executed conversationally rather than as slash commands.
+
+## Shared vs Runtime-Specific
+
+Shared across tools:
+- Root/scoped `agents.md`
+- ADRs in `docs/adr/`
+- Personas in `.armature/personas/`
+- `.armature/invariants/registry.yaml`
+- Validation scripts in `.armature/hooks/`
+
+Runtime-specific:
+- `CLAUDE.md` and `.claude/agents/` describe Claude Code execution
+- `CODEX.md` describes Codex execution
+- `.armature/templates/settings-hooks.json.tmpl` is a Claude Code hook-wiring template; `.armature/templates/codex-hooks.json.tmpl` is the equivalent for Codex's experimental `hooks.json` system. When hooks.json is unavailable, Codex uses the same scripts manually or via CI.
 
 ## What Gets Created During /armature-init
 
 The initialization protocol (Phase 0 scan, Phase 1 discovery, Phase 2 scaffolding) generates:
 
-- **CLAUDE.md** -- orchestrator entry point with routing table (from CLAUDE.md.tmpl)
-- **Root agents.md** -- global development directives (from agents.md.tmpl)
+- **CLAUDE.md** -- Claude Code adapter entry point with routing table
+- **CODEX.md** -- Codex adapter entry point with routing table
+- **Root agents.md** -- global development directives
 - **Scoped agents.md** files -- per-component governance with YAML frontmatter
-- **ADRs** in docs/adr/ -- architecture decisions with invariant declarations
+- **ADRs** in `docs/adr/` -- architecture decisions with invariant declarations
 - **Invariant registry** -- populated from ADRs and existing test enforcement
-- **Implementer personas** -- one per component in .armature/personas/implementers/
-- **Subagent wiring** -- implementer .claude/agents/ files
-- **Taskmaster integration** -- task graph from PRD
+- **Implementer personas** -- one per component in `.armature/personas/implementers/`
+- **Subagent wiring** -- implementer `.claude/agents/` files for Claude Code
+- **Taskmaster integration** -- task graph from PRD when available
 
 ## Framework Files vs. Project-Specific Files
 
 **Framework (generic, reusable across projects):**
 - `.armature/ARMATURE.md` -- the specification
 - `.armature/personas/orchestrator.md`, `reviewer.md`, `reviewer-redteam.md`, `planner.md`
-- `.armature/templates/*`
+- `.armature/templates/*` (including `CODEX.md.tmpl`)
 - `.armature/hooks/post-stop.sh`
 - `.claude/commands/*`
 - `.claude/agents/reviewer.md`, `reviewer-redteam.md`, `planner.md`
@@ -101,8 +129,9 @@ The initialization protocol (Phase 0 scan, Phase 1 discovery, Phase 2 scaffoldin
 - `.armature/invariants/registry.yaml` -- project constraints
 - `.armature/invariants/invariants.md` -- human-readable constraints
 - `.armature/personas/implementers/*.md` -- component-scoped personas
-- `.claude/agents/*-impl.md` -- implementer subagent wiring
-- `CLAUDE.md` -- project-specific orchestrator entry point
+- `.claude/agents/*-impl.md` -- Claude implementer wiring
+- `CLAUDE.md` -- project-specific Claude adapter entry point
+- `CODEX.md` -- project-specific Codex adapter entry point
 - `agents.md` -- project-specific global directives
 - `docs/adr/*.md` -- project-specific architecture decisions
 - `{source}/agents.md` -- scoped governance files

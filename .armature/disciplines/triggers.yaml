@@ -1,0 +1,161 @@
+# triggers.yaml — Discipline activation rules
+# Schema: ARMATURE.md §8.4
+# Composition: §4.8 (max 4 disciplines per delegation; severity > strict>advisory > declaration order)
+
+triggers:
+  clean-code:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: "**/*"
+
+  error-handling:
+    severity: high
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: "**/*"
+
+  typing:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/*.py", "**/*.ts", "**/*.tsx"]
+
+  python-conventions:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: "**/*.py"
+
+  test-naming:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/test_*.py", "**/*.test.ts", "**/*.spec.ts", "**/tests/**"]
+      - type: invariant
+        pattern: ["TDD-001"]
+
+  testing-standards:
+    severity: high
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/test_*.py", "**/*.test.ts", "**/*.spec.ts", "**/tests/**"]
+      - type: invariant
+        pattern: ["TDD-001"]
+
+  llm-evaluation-criteria:
+    severity: high
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/eval/**", "**/evaluation/**", "**/*eval*.py", "**/*judge*.py"]
+      - type: explicit
+        pattern: "llm-evaluation-criteria"
+
+  abstraction-rules:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js"]
+
+  adr-process:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: path
+        pattern: ["docs/adr/**", ".armature/ARMATURE.md", "**/*.md"]
+      - type: explicit
+        pattern: "adr-process"
+
+  layer-boundaries:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: path
+        pattern: ["**/*.py", "**/*.ts", "**/*.tsx"]
+      - type: explicit
+        pattern: "layer-boundaries"
+
+  data-handling:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: path
+        pattern: ["**/data/**", "**/models/**", "**/db/**", "**/storage/**", "**/*pii*", "**/*user_data*"]
+      - type: explicit
+        pattern: "data-handling"
+
+  owasp-checklist:
+    severity: high
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/auth/**", "**/security/**", "**/*oauth*", "**/*token*", "**/login*", "**/password*"]
+      - type: explicit
+        pattern: "owasp-checklist"
+
+  metrics:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: path
+        pattern: ["**/metrics/**", "**/*metric*.py", "**/*telemetry*", "**/*observability*"]
+      - type: explicit
+        pattern: "metrics"
+
+  guardrail-rules:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: path
+        pattern: ["**/guardrails/**", "**/*safety*", "**/*content_policy*", "**/*moderation*"]
+      - type: explicit
+        pattern: "guardrail-rules"
+
+  sdlc-phases:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: explicit
+        pattern: "sdlc-phases"
+
+  tdd-workflow:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: invariant
+        pattern: ["TDD-001"]
+      - type: path
+        pattern: ["**/*.py", "**/*.ts", "**/*.tsx"]
+
+  code-review:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: explicit
+        pattern: "code-review"
+
+  definition-of-done:
+    severity: high
+    composition-mode: strict
+    triggers:
+      - type: explicit
+        pattern: "definition-of-done"
+      - type: invariant
+        pattern: ["TASK-002"]
+
+  interactive-user-input:
+    severity: standard
+    composition-mode: advisory
+    triggers:
+      - type: content
+        pattern: "(input|prompt|confirm|interactive|questionnaire)"
+      - type: explicit
+        pattern: "interactive-user-input"

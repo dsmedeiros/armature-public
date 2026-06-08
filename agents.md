@@ -14,6 +14,7 @@
 - Persona files implement what the spec defines — they must not contradict it
 - Commands are operational protocols — they reference the spec, not redefine it
 - Agent wiring files are thin pointers to persona files — minimize duplication
+- Tool adapter entrypoints (for example `CLAUDE.md` and `CODEX.md`) are routing layers over shared governance — they must not introduce contradictory rules
 - Templates define structure, not content — project-specific content is generated during init
 
 ## ADR Governance
@@ -26,6 +27,7 @@
 ## Cross-Reference Integrity
 
 - Every agents.md path in CLAUDE.md routing table must point to an existing file
+- Every agents.md path in CODEX.md routing table must point to an existing file when CODEX.md is present
 - Every ADR referenced in agents.md frontmatter must exist in docs/adr/
 - Every invariant ID referenced in agents.md frontmatter must exist in the registry
 - Every enforced-by path in the registry must point to an existing file

@@ -2,7 +2,7 @@
 description: >
   Onboard a new component into the Armature governance scaffold.
   Creates scoped agents.md, implementer persona, and Claude Code subagent.
-  Updates the invariant registry, CLAUDE.md routing table, and config.yaml.
+  Updates the invariant registry, tool adapter routing tables, and config.yaml.
   This is an orchestrator-only action.
 argument-hint: "<component-path>"
 ---
@@ -41,8 +41,8 @@ If the component introduces new invariants:
 
 If new invariants use `enforced-by.hooks` entries, verify the relevant hooks are wired in `.claude/settings.json` per `.armature/templates/settings-hooks.json.tmpl`.
 
-### Step 6: Update CLAUDE.md
-Add the new component to the routing table in CLAUDE.md.
+### Step 6: Update Tool Adapters
+Add the new component to the routing table in `CLAUDE.md`. If `CODEX.md` exists, update its routing table as well.
 
 ### Step 7: Update config.yaml
 Add the component to the `topology.components` list in `.armature/config.yaml`.

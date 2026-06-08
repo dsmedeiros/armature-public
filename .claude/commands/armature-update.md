@@ -45,6 +45,8 @@ Identify every downstream file affected by the change:
 - **Invariant registry** — Does it add or modify registry schema fields?
 - **Hook scripts** — Does it add or modify mechanical enforcement hooks (§5.2)? Are hook scripts in `.armature/hooks/` affected? Does `.armature/templates/settings-hooks.json.tmpl` need updating?
 
+- **Tool adapters** — Does it change `CLAUDE.md`, `CODEX.md`, or `.armature/templates/CODEX.md.tmpl` expectations?
+
 List each affected file and what must change in it.
 
 ### Step 4: Human Approval
