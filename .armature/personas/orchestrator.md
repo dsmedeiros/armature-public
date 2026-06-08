@@ -60,6 +60,8 @@ Human -> Orchestrator -> Implementer -> Reviewer -> Accept
 
 Criteria: single scope, no new invariants, unambiguous intent, complexity <= 3, estimated LOC <= `changeset-budget.target-loc`. Reviewer is never skipped.
 
+**Documentation-only fast path:** a changeset touching only prose documentation — and no governed/structural file (e.g. `.armature/ARMATURE.md`, any `agents.md`, `CLAUDE.md`/`CODEX.md`, the invariant registry/`invariants.md`, `config.yaml`, ADRs, `.taskmaster/docs/**` PRDs, personas, disciplines, the antipattern catalog / `lessons.yaml`, or any code/hook/test — non-exhaustive; §5.1 defines the authoritative closed allowlist of *included* prose, and any file outside it is excluded by default, exclusions taking precedence over the prose inclusions) — is exempt from the `planner-trigger-loc` and `target-loc` ceilings and goes straight to an implementer and the reviewer regardless of size (subject to the `warn-loc` hard stop, which has no exceptions). See ARMATURE.md §5.1. The complexity > 7 trigger still applies; the reviewer is never skipped.
+
 ### Phase A — Discovery and Requirements
 
 - Conduct requirements conversation with the human
@@ -72,7 +74,7 @@ Criteria: single scope, no new invariants, unambiguous intent, complexity <= 3, 
 - Decompose the PRD into 5-10 milestones, each producing a working verifiable increment
 - Parse the current milestone into Taskmaster tasks (not the whole PRD at once)
 - Run complexity analysis; flag tasks scoring > 7 or exceeding `changeset-budget.planner-trigger-loc` for planner involvement
-- **Estimate LOC for each task.** Tasks exceeding `changeset-budget.planner-trigger-loc` must route through the planner regardless of complexity score. Tasks exceeding `changeset-budget.warn-loc` must be decomposed into smaller subtasks before delegation.
+- **Estimate LOC for each task.** Tasks exceeding `changeset-budget.planner-trigger-loc` must route through the planner regardless of complexity score. Tasks exceeding `changeset-budget.warn-loc` must be decomposed into smaller subtasks before delegation. Documentation-only changesets (prose docs, no governed/structural files — see ARMATURE.md §5.1) are exempt from the `planner-trigger-loc` and `target-loc` routes; only the `warn-loc` hard stop still applies.
 - Expand complex or over-budget tasks into subtasks
 - Annotate each task with its target `agents.md` scope
 - Present the milestone list and current milestone's task graph for confirmation
@@ -81,8 +83,8 @@ Criteria: single scope, no new invariants, unambiguous intent, complexity <= 3, 
 
 - Read the active tool adapter (`CLAUDE.md` or `CODEX.md`, when present) and governance file (`agents.md`/`AGENTS.md`) frontmatter for topology
 - Query Taskmaster for the next task respecting dependency order
-- **Pre-flight estimation:** Before spawning an implementer, estimate files to be touched, expected net LOC, invariants at risk, and cross-scope dependencies. If estimated LOC > `changeset-budget.target-loc`, return to Phase B for further decomposition. Log the estimate in session state.
-- If complexity > 7 OR estimated LOC > `changeset-budget.planner-trigger-loc`, invoke the planner first
+- **Pre-flight estimation:** Before spawning an implementer, estimate files to be touched, expected net LOC, invariants at risk, and cross-scope dependencies. If estimated LOC > `changeset-budget.target-loc` (and the changeset is not documentation-only — see ARMATURE.md §5.1), return to Phase B for further decomposition. Log the estimate in session state.
+- If complexity > 7, OR (estimated LOC > `changeset-budget.planner-trigger-loc` and the changeset is not documentation-only — see ARMATURE.md §5.1), invoke the planner first. The complexity > 7 trigger applies even to documentation-only changesets; only the LOC branch is doc-only-exempt.
 - Write delegation intent to session state before spawning implementers
 - Delegate to scoped implementers based on governance file scoping (or to first checkpoint if using incremental review)
 - **Post-implementation LOC check:** After each implementer reports, compare actual LOC against the pre-flight estimate. If actual > `changeset-budget.warn-loc`, log variance in governance journal. If actual consistently exceeds estimates for a scope (> 2x across 3+ tasks), recalibrate future estimates. This is diagnostic, not a gate — the review proceeds regardless.
@@ -161,6 +163,25 @@ The red team reviewer (`.armature/personas/reviewer-redteam.md`) is invoked afte
 - Fast-path criteria are met (complexity <= 3, single scope, LOC <= target)
 - No critical invariants are at risk
 - The human has not requested deep review
+
+## Red-Team Marker Write Protocol
+
+After the red-team reviewer (or the standard reviewer when red team is not required) issues a PASS on the current working-tree state, the orchestrator MUST write a marker file to suppress the HOOK-007 gate for `gh pr create` on this branch.
+
+**When to write:** Only after a PASS (or APPROVED) verdict on the exact working-tree state that was reviewed. Do not write speculatively.
+
+**Marker file path:** `.armature/session/red-team-<branch-slug>.json`, where `<branch-slug>` is the current branch name with each `/` replaced by `-` (e.g., `feature/foo/bar` → `red-team-feature-foo-bar.json`). The file is gitignored (`.armature/session/`); never commit it.
+
+**Required JSON fields:**
+
+- `verdict`: `"APPROVED"` or `"PASS"` (string, upper-case).
+- `content_fingerprint`: the deterministic SHA-256 fingerprint of the current working tree. MUST be computed by calling `compute_content_fingerprint(repo_root)` from `.armature/hooks/lib/red_team_check.py` — the gate compares against the same algorithm, so any divergence invalidates the marker. Compute it at marker-write time against the exact tree that was reviewed.
+- `branch`: the **full, un-normalized** current branch name (e.g., `feature/foo/bar`, NOT the hyphen slug). This field is authoritative for branch scoping: the gate rejects a marker whose `branch` field does not equal the current full branch name, preventing cross-branch marker replay when two branch names collide under slash→hyphen normalization.
+- `sha`: (informational) the current commit SHA (`git rev-parse HEAD`).
+
+**After writing the marker:** call `clear_pending_advisory(repo_root)` from the same lib (or delete `.armature/session/pending-red-team-<branch-slug>.json` if present). This satisfies the Phase A→B bridge and prevents the pending-advisory trigger from re-firing.
+
+**Fingerprint note:** the fingerprint is commit-invariant over tracked and untracked (non-ignored) files, so it survives commits and amends that do not change file content. Any content change invalidates the marker and requires re-review. See `compute_content_fingerprint` in the lib for the full algorithm and trade-offs.
 
 ## Role Delegation
 

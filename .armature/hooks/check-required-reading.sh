@@ -115,6 +115,7 @@ except OSError as e:
     print(f'SKIP: Could not read {agents_file}: {e}')
     sys.exit(0)
 
+fm = {}
 if content.startswith('---'):
     end = content.find('---', 3)
     if end > 0:
@@ -171,6 +172,34 @@ for adr_id in adr_ids:
         lines.append(f'  - {rel(resolved, repo_root)}')
     else:
         lines.append(f'  - {adr_id} (file not found — check docs/adr/)')
+
+# ---------------------------------------------------------------------------
+# 6. Emit discipline files from discipline-tags frontmatter field
+# ---------------------------------------------------------------------------
+discipline_tags = []
+if have_yaml:
+    try:
+        raw_tags = fm.get('discipline-tags', None)
+        if isinstance(raw_tags, list):
+            discipline_tags = [str(t) for t in raw_tags]
+        elif raw_tags:
+            discipline_tags = [str(raw_tags)]
+    except Exception:
+        pass
+else:
+    # Fallback: skip discipline-tags when YAML is unavailable
+    pass
+
+if not discipline_tags:
+    lines.append('<!-- no required disciplines for this scope -->')
+else:
+    lines.append('Required disciplines:')
+    for tag in discipline_tags:
+        disc_path = os.path.join(repo_root, '.armature', 'disciplines', f'{tag}.md')
+        if os.path.isfile(disc_path):
+            lines.append(f'  - {rel(disc_path, repo_root)}')
+        else:
+            lines.append(f'  - {tag} (discipline file not found — check .armature/disciplines/)')
 
 lines.append('Ensure you have read these files before modifying code in this scope.')
 

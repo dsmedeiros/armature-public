@@ -1,4 +1,4 @@
-armature-version: "1.1.0"
+armature-version: "1.2.0"
 
 project:
   name: "Armature"
@@ -51,7 +51,7 @@ governance:
     #     ack-emoji: "eyes"
     #     ack-timeout: 20
     #     ack-retries: 5
-    final-reviewer: ""                # Bot trigger after score gate passes
+    final-reviewer: ""                # Bot login to invoke after score gate passes
     final-reviewer-trigger: ""        # e.g., "@codex review this"
     batch-wait-seconds: 60
     test-command: ""                   # e.g., "python -m pytest"

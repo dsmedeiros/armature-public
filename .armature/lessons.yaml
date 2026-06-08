@@ -1,0 +1,208 @@
+# Armature Harness Feedback Corpus
+# Read by .armature/hooks/harness-feedback.sh on the Stop event.
+# Each lesson surfaces at most once per Stop, filtered by current SDLC phase.
+# Schema: see .armature/session/m7-plan.md §D6.
+#
+# Fields:
+#   id:     L<NNN> — must sort lexicographically. The hook DETERMINISTICALLY
+#           selects the highest-id applicable lesson for the current SDLC
+#           phase (the same lesson surfaces on repeated runs until corpus
+#           grows or filtering changes). New high-id lessons supersede prior
+#           ones for any given phase; earlier lessons surface only by
+#           changing phase or filtering.
+#   title:  ≤80 chars, concise problem statement.
+#   phases: list of phase names; empty list [] = universal (any phase).
+#           Valid values: Discovery, Design, Implementation, Review, Release, Hotfix
+#   tags:   list of strings, free-form.
+#   text:   folded scalar (>); explains the issue and the canonical fix.
+
+lessons:
+  - id: L001
+    title: "NUL bytes in stdin bypass JSON parsers"
+    phases: [Implementation, Review]
+    tags: [hooks, security, bash]
+    text: >
+      Use sys.stdin.buffer.read() in Python hook blocks; check for b"\x00"
+      before decoding. Bash $(cat) silently strips NUL bytes, creating a
+      bypass surface where a crafted payload can evade hook validation
+      entirely. Always read raw bytes first, reject on NUL presence, then
+      decode.
+
+  - id: L002
+    title: "Regex alternation without grouping drops anchors"
+    phases: [Implementation]
+    tags: [python, testing, regex]
+    text: >
+      r"^foo|bar" is NOT equivalent to r"^(foo|bar)". The ^ anchor applies
+      only to the first branch without grouping. The second branch matches
+      "bar" anywhere in the string, including mid-line. Always group
+      alternation branches when applying anchors: r"^(foo|bar)".
+
+  - id: L003
+    title: "Bash heredoc hijacks Python stdin"
+    phases: [Implementation]
+    tags: [bash, python, hooks]
+    text: >
+      $PYTHON - <<'PYEOF' redirects the heredoc as Python's stdin, which
+      silently hijacks the hook's actual stdin read. Any sys.stdin.read()
+      inside the block receives the heredoc content, not the hook payload.
+      Use -c "$_PYTHON_MAIN" with double-quoted Python strings instead, or
+      export env vars before the heredoc and read them inside the block.
+
+  - id: L004
+    title: "Advisory-only Python blocks need || true under pipefail"
+    phases: [Implementation]
+    tags: [bash, hooks, robustness]
+    text: >
+      Under set -euo pipefail, an advisory-only Python inline block whose
+      failure must not propagate to the hook's exit code needs a || true
+      tail. Uncaught exceptions (or sys.exit(non-zero)) otherwise cause
+      bash to terminate the hook early, skipping any subsequent advisory
+      emission or cleanup. Pattern: $PYTHON - <<'PYEOF' || true
+
+  - id: L005
+    title: "Compound assert X or Y short-circuits and hides bugs"
+    phases: []
+    tags: [python, testing]
+    text: >
+      assert X or Y evaluates to True if either operand is truthy,
+      including via Python's short-circuit rule. A test with this pattern
+      may pass while hiding a failure in one branch. Use separate
+      assertions to verify each condition independently. For OR-pass
+      semantics, write: assert X, "msg X"; assert Y, "msg Y" in separate
+      tests, or assert not (not_X and not_Y) with explicit message.
+
+  - id: L006
+    title: "Implementer LOC delivery is ~45-55% of plan estimate"
+    phases: [Design]
+    tags: [planning, estimation]
+    text: >
+      Across M1-M6 of the etc-parity initiative, implementer-delivered LOC
+      consistently ran 45-55% of raw plan estimates. This reflects natural
+      consolidation (shared helpers, shorter expressions, reused patterns)
+      that estimates don't anticipate. Plans should target the high end
+      (50%) and size changeset budgets accordingly to avoid triggering
+      planner re-routes from apparent overrun.
+
+  - id: L007
+    title: "Quote pip version specifiers in CI to avoid shell redirect"
+    phases: [Implementation, Release]
+    tags: [ci, bash, pip]
+    text: >
+      pip install pytest>=8.0 parses > as a shell redirect operator,
+      creating an empty file named =8.0 and failing silently without
+      installing anything. Always quote version specifiers:
+      pip install "pytest>=8.0". This applies to all operators: >=, <=,
+      !=, ~=.
+
+  - id: L008
+    title: "ASCII-only .strip for security-sensitive phase reads"
+    phases: [Implementation]
+    tags: [python, security, hooks]
+    text: >
+      Python's str.strip() strips Unicode whitespace by default, including
+      NBSP (U+00A0), ideographic space (U+3000), and other non-ASCII
+      whitespace characters. For exact-equality bypass checks like Hotfix
+      phase detection, use .strip(' \t\n\r') with the ASCII set explicitly
+      listed. This closes the Unicode-whitespace bypass where a crafted
+      phase file containing NBSP-padded "Hotfix" evades the exact match.
+
+  - id: L009
+    title: "Keyword-anchor tests need invented domain tokens"
+    phases: [Implementation, Review]
+    tags: [python, testing]
+    text: >
+      Threshold and boundary tests for keyword-matching heuristics fail
+      unexpectedly when criterion text uses common English words (e.g.,
+      "check", "new", "test") that appear as substrings in deliverable
+      boilerplate. For example, testing that "check" does NOT trigger a
+      keyword match fails if the hook code normalizes or stems words and
+      "check" appears in "checked" within the boilerplate. Use invented
+      domain tokens (e.g., zymurgy_module_xray, foobarium_sentinel) for
+      unambiguous boundary tests.
+
+  - id: L010
+    title: "Staleness-check review findings against current branch state before fixing"
+    phases: [Review]
+    tags: [review, governance, multi-commit-pr]
+    text: >
+      Bot reviewers (codex, greptile) and human reviewers post against a
+      specific commit.oid snapshot. On a multi-commit PR — especially one
+      that received multiple @codex review cycles across phases — later
+      commits can fully or partially obsolete a finding (e.g., a finding
+      that says "X doesn't exist" against an earlier commit may be stale
+      if X has since landed). Capture each review's commit.oid; for each
+      finding run a 3-axis audit against CURRENT branch state: (1) does
+      the cited content still exist; (2) has anything cited as missing
+      landed since; (3) has the broken data been adapted. Triage into
+      CONFIRMED, PARTIALLY STALE, FULLY STALE, or FALSE ALARM in a table
+      BEFORE acting. For CONFIRMED, fix per the standard PR-review
+      workflow; reply with the commit SHA. For PARTIALLY STALE, fix the
+      surviving part and reply citing what landed since. For FULLY
+      STALE, reply with the commit SHA that addressed it; do not modify
+      code. For FALSE ALARM, reply with a citation explaining why the
+      code is correct (file:line, invariant ID, test name, or concrete
+      interleaving); do not modify code, and do not leave the thread
+      silent — unresolved threads accumulate and the next reviewer
+      will re-raise them. Default verdict
+      on a review whose commit.oid != HEAD: at minimum PARTIALLY STALE
+      until each axis is verified. Implementing a fix for a finding
+      that's already addressed by a later commit is worse than not
+      fixing — it adds churn, pollutes the commit history with "fix Z
+      which was already fixed in Y," and trains future reviewers to
+      trust stale findings. Pattern triggers: multi-commit PR with
+      multiple @codex review cycles; review carries non-HEAD commit.oid;
+      finding says "X doesn't exist" or "Y is missing." Real instance:
+      a 12-commit, 10-phase upstream-framework backport PR had 7
+      unresolved findings audited; 3 were stale or partially stale
+      (cited absent hooks/sections that landed in later phases) + 4
+      still valid. Without the staleness check, the orchestrator would
+      have wasted cycles "fixing" content that already existed in later
+      commits.
+
+  - id: L011
+    title: "Re-verify any handed-in finding or claim against ground truth before acting"
+    phases: [Review]
+    tags: [review, governance, audit, delegation]
+    text: >
+      A finding you did not personally establish against the current working
+      tree is an unverified claim, not a work order. Sources: bot/human
+      PR-review comments; external or connector-generated audit/inventory
+      reports (doc-staleness, security, drift); findings from a subagent you
+      delegated verification to; and quantitative claims (counts, percentages,
+      versions, deltas). Re-confirm EACH against the CURRENT tree (exact
+      file/line/path) before touching code, then classify it. For a PR-review
+      finding, first capture the review's commit.oid and run a 3-axis staleness
+      audit vs HEAD: (1) does the cited content still exist; (2) has anything
+      cited as missing landed since; (3) has the flagged data been adapted —
+      later commits on a multi-commit PR routinely obsolete a finding. One
+      classification scheme: CONFIRMED (real — fix it, reply with the commit
+      SHA); CONFIRMED-but-misdirected (real bug, but the proposed fix weakens a
+      security/observability/audit/governance guarantee — fix in the safer
+      direction and explain the divergence); PARTIAL (a.k.a. PARTIALLY-STALE —
+      fix only the surviving part, reply citing what landed since);
+      ALREADY-ADDRESSED (a.k.a. FULLY-STALE — a later commit already fixed it;
+      reply with that SHA, do NOT re-fix: re-fixing adds churn and pollutes
+      history); FALSE (a.k.a. FALSE-ALARM — reject with a citation: file:line,
+      invariant ID, test, or concrete interleaving; do NOT modify code);
+      OUT-OF-SCOPE (file separately). Default verdict on a review whose
+      commit.oid != HEAD: at least PARTIALLY-STALE until each axis is verified.
+      Never leave a thread silent — unresolved threads accumulate and the next
+      reviewer re-raises them. Never doc-wash a code bug: when a finding says
+      "doc X disagrees with code," determine which is correct; if the CODE is
+      wrong, fix the code (or file it), do not edit the doc to bless the defect.
+      Spot-check delegated verification on load-bearing semantics: a subagent
+      can read the right lines and still conclude wrongly when a helper or
+      pre-processor changes effective behavior — read the code that DECIDES
+      behavior (env-getter, default-collapse, validator, input-builder), not
+      just the conditional that consumes it. A "no longer exists / was removed"
+      claim must be backed by a repository-wide search, never a single-file one.
+      Verify quantitative claims programmatically before relying on them. This
+      lesson is self-contained for its phases (it supersedes L010 via the
+      highest-id selection in harness-feedback.sh, so L010's commit.oid 3-axis
+      staleness specifics are inlined above rather than cross-referenced). Real
+      instances: a 16-finding external doc-staleness audit where one finding was
+      FALSE and would have weakened a tenant-isolation invariant if applied; and
+      a review round where delegated verification misread an env-getter's
+      empty-to-default collapse, and a single-file grep wrongly concluded a
+      handler "no longer exists" when it was defined in another file.

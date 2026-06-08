@@ -2,7 +2,7 @@
 
 **Agentic Repository Management Architecture**
 
-Version 1.1.0 | Dave Medeiros / Panoptic Systems
+Version 1.2.0 | Dave Medeiros / Panoptic Systems
 
 ---
 

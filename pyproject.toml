@@ -1,0 +1,19 @@
+[project]
+name = "armature"
+version = "0.1.0"
+description = "Portable scaffold specification for agentic repository governance"
+requires-python = ">=3.11"
+# PyYAML is a RUNTIME dependency, not test-only: the governance hooks parse
+# YAML at enforcement time — post-stop.sh validates registry.yaml /
+# triggers.yaml / ci.yaml, and check-cascade.sh parses cascade-rules.yaml as a
+# blocking PreToolUse gate (DRIFT-002). The cascade gate fails closed when the
+# parser is absent, so PyYAML must be present wherever cascade rules are used.
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = [".armature/tests"]
+python_files = "test_*.py"
+addopts = "--tb=short -q"

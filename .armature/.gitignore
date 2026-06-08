@@ -2,3 +2,5 @@
 session/
 escalations/
 .code-dirty
+session/active-delegations/
+session/skip-ci

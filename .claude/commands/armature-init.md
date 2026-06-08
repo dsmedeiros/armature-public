@@ -210,7 +210,7 @@ If yes, continue with these questions:
    - If yes → type: `score-gated`. Ask for the score threshold (default: 4) and the regex pattern to extract the score (default: `(\d)\s*/\s*5`).
    - If no → type: `direct`. Ask if it acknowledges with an emoji reaction (default: `eyes`), timeout (default: 20s), and retries (default: 5).
 
-5. "After the score-gated bot passes, which bot should do the final review?" Collect the trigger text (e.g., `@codex review this`).
+5. "After the score-gated bot passes, which bot should do the final review?" Collect **both**: (a) the reviewer's **bot login** (GitHub login format, e.g., `chatgpt-codex-connector[bot]`) → `final-reviewer`, and (b) the **trigger text** that invokes it (e.g., `@codex review this`) → `final-reviewer-trigger`. The login is what `/resolve`'s clean-pass rule matches on (it skips re-requesting a reviewer that already passed); the trigger is the comment text the CI workflow posts.
 
 6. "What test command should Claude run after fixing?" (e.g., `python -m pytest`, `npm test`). This is project-specific.
 
@@ -218,7 +218,7 @@ If yes, continue with these questions:
 
 **Populate config.yaml:**
 
-Fill in the `governance.ci-review-pipeline` section with the collected answers.
+Fill in the `governance.ci-review-pipeline` section with the collected answers. In particular, `final-reviewer` and `final-reviewer-trigger` are distinct fields: set `final-reviewer` to the final reviewer's **bot login** (Q5a) — this identifies the reviewer and is consumed by `/resolve`'s clean-pass rule — and set `final-reviewer-trigger` to its **trigger text** (Q5b), the comment text the workflow posts.
 
 **Generate workflow:**
 

@@ -1,9 +1,10 @@
 ---
 scope: ".claude/commands"
-governs: "Operational protocol definitions for init, extend, update, backport, and checkpoint"
+governs: "Operational protocol definitions for init, extend, update, backport, checkpoint, spec, postmortem, and resolve"
 inherits: "agents.md"
 adrs: [ADR-0001, ADR-0002]
 invariants: [SPEC-002]
+discipline-tags: [definition-of-done]
 enforced-by:
   - ".armature/hooks/post-stop.sh"
 persona: implementer
@@ -16,7 +17,7 @@ test-scope: "none"
 
 ## Overview
 
-This scope governs the Claude Code slash commands that implement Armature operational protocols: `/armature-init`, `/armature-extend`, `/armature-update`, `/armature-backport`, and `/checkpoint`.
+This scope governs the Claude Code slash commands that implement Armature operational protocols: `/armature-init`, `/armature-extend`, `/armature-update`, `/armature-backport`, `/checkpoint`, `/spec`, `/postmortem`, and `/resolve`.
 
 These files are also the written protocol source for Codex and other environments without slash commands. In those tools, the agent executes the same workflow conversationally by reading these files directly.
 
@@ -30,7 +31,7 @@ These files are also the written protocol source for Codex and other environment
 
 ## Change Expectations
 
-- Preserve the command naming convention: `armature-{verb}.md`
+- Preserve the command naming convention for the `armature-*` family: `armature-{verb}.md`. Other commands use single-noun names (`spec`, `postmortem`, `checkpoint`).
 - Preserve YAML frontmatter structure (description, argument-hint fields)
 - Preserve the step-by-step protocol structure within each command
 - Preserve the distinction between Claude-specific command invocation and tool-agnostic protocol content

@@ -4,6 +4,7 @@ governs: "Claude Code subagent wiring files for reviewer, planner, red team, and
 inherits: "agents.md"
 adrs: [ADR-0001, ADR-0002]
 invariants: [SPEC-002, ADAPTER-001]
+discipline-tags: []
 enforced-by:
   - ".armature/hooks/post-stop.sh"
 persona: implementer

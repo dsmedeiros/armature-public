@@ -1,5 +1,7 @@
 {
   "_comment": "Armature hook wiring template for Codex hooks.json. Copy to .codex/hooks.json and enable with codex_hooks = true in config.toml. Codex hooks are experimental; verify your Codex version supports them.",
+  "_comment_task_hooks": "TASK-001, TASK-002, TASK-003 hooks (task-readiness.sh, task-completion.sh, auto-reviewer.sh) require Claude Code lifecycle events (PreToolUse Task, SubagentStop) and are not compatible with the Codex experimental hook model. They are wired in settings-hooks.json.tmpl only. See .armature/session/m5-plan.md D8 for rationale.",
+  "_comment_m7_hooks": "M7 hooks: run-ci.sh reads .armature/ci.yaml for project CI commands; harness-feedback.sh reads .armature/lessons.yaml for cross-project lessons. Both fire on Stop in advisory mode.",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,7 +9,29 @@
         "timeout": 5
       },
       {
+        "_comment": "DRIFT-002 cascade gate: blocks commit-producing git commands when a cascade rule's companion files are not co-staged (see .armature/cascade-rules.yaml). Exits 0 for all non-commit commands. Remove if the project defines no cascade rules.",
+        "command": "bash .armature/hooks/precommit-cascade-gate.sh",
+        "timeout": 15
+      },
+      {
+        "_comment": "HOOK-007 red-team pre-PR gate: intercepts `gh pr create`; advisory by default (exit 0 with stderr warning), BLOCKS (exit 2) only when ARMATURE_RED_TEAM_ENFORCE in {1,true} AND a red-team trigger fired but no valid marker exists; consumes the shared red_team_check lib; remove this entry if the project does not use red-team PR gating.",
+        "command": "bash .armature/hooks/pre-pr-create.sh",
+        "timeout": 15
+      },
+      {
         "command": "bash .armature/hooks/check-required-reading.sh",
+        "timeout": 5
+      },
+      {
+        "command": "bash .armature/hooks/tier0-preflight.sh",
+        "timeout": 5
+      },
+      {
+        "command": "bash .armature/hooks/tdd-gate.sh",
+        "timeout": 5
+      },
+      {
+        "command": "bash .armature/hooks/phase-gate.sh",
         "timeout": 5
       }
     ],
@@ -21,6 +45,14 @@
       {
         "command": "bash .armature/hooks/post-stop.sh",
         "timeout": 120
+      },
+      {
+        "command": "bash .armature/hooks/run-ci.sh",
+        "timeout": 1200
+      },
+      {
+        "command": "bash .armature/hooks/harness-feedback.sh",
+        "timeout": 10
       }
     ],
     "SessionStart": [

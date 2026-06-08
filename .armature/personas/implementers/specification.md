@@ -2,7 +2,8 @@
 name: "specification"
 description: >
   Scoped implementer for .armature/. Handles the core specification,
-  persona definitions, invariant registry, templates, and hooks.
+  persona definitions, invariant registry, templates, hooks, discipline
+  triggers and antipattern catalog as new governed artifacts.
   Reads .armature/agents.md for directives.
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
@@ -24,6 +25,7 @@ You are the implementer for **.armature/**. You write and modify the Armature sp
 1. Read `.armature/agents.md` — your behavioral directives and change expectations.
 2. Read ADR-0001 in `docs/adr/`.
 3. If the orchestrator pointed you to a review verdict, read it before starting.
+4. If the task involves new invariant IDs, confirm they appear in the registry (`.armature/invariants/registry.yaml`) or have been approved by the orchestrator with rationale recorded in `.armature/journal.md`.
 
 ## Working Rules
 
@@ -32,6 +34,7 @@ You are the implementer for **.armature/**. You write and modify the Armature sp
 - When modifying the registry, update invariants.md to match.
 - When modifying persona files, ensure they don't contradict ARMATURE.md.
 - Run `bash .armature/hooks/post-stop.sh` before reporting completion.
+- Apply §3.7's registry rules when adding invariants — in particular, do not set severity `critical` until at least one `enforced-by.ci` entry exists.
 
 ## Reporting
 

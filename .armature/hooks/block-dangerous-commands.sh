@@ -13,7 +13,14 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # ---------------------------------------------------------------------------
 # Parse the command string from stdin JSON.
-# Try python first; fall back to a grep/sed approach.
+#
+# Security: NUL bytes (0x00) MUST be rejected before any decode. Bash command
+# substitution (`$(cat)`) silently strips NUL bytes, allowing an attacker to
+# pad command tokens with embedded nulls that disappear before pattern
+# matching. This is lesson L001 in .armature/lessons.yaml. Newer framework
+# hooks (tdd-gate.sh, tier0-preflight.sh, task-readiness.sh) all read stdin
+# via Python's sys.stdin.buffer.read() and check for b"\x00" before decoding.
+# This is a fail-closed security gate, so NUL byte detection triggers BLOCK.
 #
 # N-3 pre-processing: literal LF (0x0A) characters inside a JSON string
 # value are not valid JSON, but they can appear when a multi-line command
@@ -21,29 +28,44 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # raw JSON text before parsing so that the JSON parser can still extract the
 # full command value across lines.
 # ---------------------------------------------------------------------------
-STDIN_CONTENT="$(cat | tr '\012' ' ')"
+PYTHON=""
+if command -v python3 &>/dev/null; then PYTHON="python3"; elif command -v python &>/dev/null; then PYTHON="python"; fi
 
-COMMAND=""
-if command -v python3 &>/dev/null; then
-  COMMAND="$(printf '%s' "$STDIN_CONTENT" | python3 -c "
+if [ -n "$PYTHON" ]; then
+  # Python path: full L001 NUL-byte guard + JSON parse via sys.stdin.buffer.
+  # Python exits 2 on NUL detection; set -e propagates that as the script's
+  # exit code, which BLOCKs the tool call (no separate py_rc capture needed —
+  # bash exits at the failing command substitution under errexit).
+  COMMAND="$("$PYTHON" -c "$(cat <<'PYEOF'
 import json, sys
+raw = sys.stdin.buffer.read()
+# L001: reject NUL bytes before any decode — bash strips them, masking bypass.
+# This is a fail-closed security gate, so NUL-byte payloads BLOCK.
+if b'\x00' in raw:
+    sys.stderr.write('BLOCK: NUL bytes in command payload (potential bypass attempt per L001)\n')
+    sys.exit(2)
+text = raw.decode('utf-8', errors='replace')
+# N-3: normalise literal LFs inside JSON string values to spaces so JSON parses.
+text = text.replace('\n', ' ').replace('\r', ' ')
 try:
-    data = json.load(sys.stdin)
+    data = json.loads(text)
     print(data.get('tool_input', {}).get('command', ''))
 except Exception:
     pass
-")"
-elif command -v python &>/dev/null; then
-  COMMAND="$(printf '%s' "$STDIN_CONTENT" | python -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    print(data.get('tool_input', {}).get('command', ''))
-except Exception:
-    pass
-")"
+PYEOF
+)")"
 else
-  # Fallback: extract value of "command" key with sed
+  # Python unavailable — fail-OPEN for parse, fail-CLOSED via pattern checks.
+  # Without Python the L001 NUL-byte guard is inactive (bash command
+  # substitution silently strips NUL), but the bash pattern checks below
+  # still catch naked `rm -rf /` / `git reset --hard` / etc. This is
+  # strictly better than the alternative of allowing every command, and
+  # matches canonical's pre-PR-23 behaviour. Documented trade-off: a
+  # determined attacker on a no-Python host could pad command tokens with
+  # NUL bytes to bypass pattern matching; install python3 to close that
+  # gap. Sed fallback parses the JSON command value with a single regex.
+  echo "ADVISORY: block-dangerous-commands.sh has no python3/python — L001 NUL-byte guard inactive; pattern checks still apply" >&2
+  STDIN_CONTENT="$(cat | tr '\012' ' ')"
   COMMAND="$(printf '%s' "$STDIN_CONTENT" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1)"
 fi
 
@@ -77,6 +99,42 @@ COMMAND="$(printf '%s' "$COMMAND" | tr '\012' ' ')"
 # ---------------------------------------------------------------------------
 COMMAND="$(printf '%s' "$COMMAND" | tr -d '\134')"
 COMMAND="$(printf '%s' "$COMMAND" | tr '\015' 'r')"
+
+# ---------------------------------------------------------------------------
+# Cycle-17 fix (shell-expanded-whitespace bypass): normalize all IFS
+# parameter-expansion forms to a space. Bash expands $IFS (and any
+# parameter-expansion subset of it) to space-tab-newline by default, so a
+# command like `rm${IFS}-rf /` runs as `rm -rf /` but appears to the
+# validator with the literal `${IFS}` between `rm` and `-rf`. The outer
+# rm-rf substring detection and the per-rm operand walker both anchor on
+# whitespace, so this substitution restores their visibility into
+# variable-whitespace bypass patterns. Performed AFTER backslash/CR
+# normalization so escape forms are decoded first.
+#
+# Covers:
+#   ${IFS}                exact braced form
+#   ${IFS:0:1}            substring expansion (first char)
+#   ${IFS%??}             pattern-removal expansion
+#   ${IFS#...}            prefix removal
+#   ${IFS/x/y}            substitution
+#   ${IFS^^}, ${IFS,,}    case modification
+#   $IFS                  bare form (when followed by non-identifier char)
+#
+# Use sed because bash parameter-expansion ${var//pat/repl} only supports
+# pathname-style globs, not regex; bash globs cannot express "${IFS} or
+# ${IFS followed by any param-expansion operator}". PR #297 cycle-17 +
+# PR dsmedeiros/armature#23 cycle-4 review.
+# ---------------------------------------------------------------------------
+# Pattern 1: ${IFS}, ${IFS<op><chars>} — any braced IFS expansion. The
+# regex matches `${IFS` immediately followed by either `}` (exact form)
+# or a non-identifier character (so ${IFSx} is left alone — that's a
+# different variable) plus zero-or-more non-`}` chars plus `}`.
+COMMAND="$(printf '%s' "$COMMAND" | sed -E 's/\$\{IFS\}/ /g; s/\$\{IFS[^A-Za-z0-9_}][^}]*\}/ /g')"
+# Pattern 2: bare $IFS followed by non-identifier char or end of string.
+# `\b` in BRE/ERE is GNU-specific; use a character class plus a trailing
+# capture-and-restore so we replace only `$IFS` without consuming the
+# following character.
+COMMAND="$(printf '%s' "$COMMAND" | sed -E 's/\$IFS([^A-Za-z0-9_]|$)/ \1/g')"
 
 # ---------------------------------------------------------------------------
 # Helper: emit block message and exit 2
@@ -116,8 +174,17 @@ is_safe_rm_target() {
 
   # Reject path traversal
   if [[ "$raw_target" == *".."* ]]; then return 1; fi
-  # Reject absolute paths with sub-directories (e.g. /home/user/node_modules)
-  if [[ "$raw_target" == /* ]] && [[ "$raw_target" != "/${b}" ]]; then return 1; fi
+  # Cycle-20 fix: reject ALL absolute paths. The safe-name allowlist is
+  # for repo-local cache/build directories (node_modules, dist, .venv,
+  # __pycache__, etc.); absolute paths whose basename happens to collide
+  # with a safe name (e.g. `/build`, `/dist`, `/node_modules`) point at
+  # filesystem-root directories outside the repo and must never be
+  # rm-rf'd by a governed agent. Previously this check accepted any
+  # absolute path of the form `/<basename>` because the inequality
+  # `$raw_target != /${b}` failed for single-segment absolute targets.
+  # If a user genuinely needs to wipe a repo-local cache, the relative
+  # form (`rm -rf node_modules` or `rm -rf ./node_modules`) works.
+  if [[ "$raw_target" == /* ]]; then return 1; fi
 
   for safe in "${SAFE_RM_TARGETS[@]}"; do
     if [[ "$b" == "$safe" ]] || [[ "$t" == "$safe" ]]; then return 0; fi
@@ -125,24 +192,128 @@ is_safe_rm_target() {
   return 1
 }
 
-# Returns 0 (safe) only when every non-flag argument to an rm command is a
-# recognised safe target; returns 1 (unsafe) as soon as any argument is not.
+# Returns 0 (safe) only when EVERY rm invocation in the command has
+# operands that are recognised safe targets. Returns 1 (unsafe) on the
+# first unsafe operand or bare rm-rf.
+#
+# Handles chained commands by iterating over each ` rm ` occurrence and
+# validating its operands separately. Shell separators (&&, ||, ;, |, &)
+# bound each rm invocation; tokens after a separator belong to a
+# different command and are not rm operands.
+#
+# Examples:
+#   rm -rf node_modules && npm ci       → PASS (only one rm, safe target)
+#   rm -rf node_modules && rm -rf /     → BLOCK (second rm has unsafe target)
+#   rm -rf node_modules&&npm ci         → PASS (no-space variant)
 all_rm_targets_safe() {
-  local cmd="$1"
-  # Extract the portion of the command starting at the first "rm " token.
-  # This handles prefixes like "sudo rm", "env rm", "xargs rm", etc.
-  local rm_onwards="${cmd#*rm }"
-  # Split into an array
-  read -ra tokens <<< "$rm_onwards"
-  local found_target=0
-  for token in "${tokens[@]}"; do
-    # Skip flag tokens (start with -)
-    if [[ "$token" == -* ]]; then continue; fi
-    found_target=1
-    if ! is_safe_rm_target "$token"; then return 1; fi
+  # Normalize whitespace: convert TAB characters to spaces so that the
+  # " rm " boundary detection works on tab-separated invocations like
+  # `rm\t-rf /` or `sudo\trm\t-rf /`. Shells treat tabs as whitespace,
+  # so the outer rm-rf regex (which uses [[:space:]]) matches both
+  # forms; the operand validator must too. Without this step a real
+  # rm-rf invocation with tab separators would silently pass the
+  # safe-target check. (L001-class bypass.)
+  # Whitespace-variable expansion (`${IFS}` / `$IFS`) is normalized at
+  # the top-level COMMAND processing step BEFORE this function is called,
+  # so by the time we get here those substrings have already been replaced
+  # with literal spaces. See COMMAND normalization in the parent script.
+  local cmd_norm="${1//	/ }"   # literal TAB → space (the char between // and / is a TAB)
+  # Strip quote characters — they are token-delimiters in the shell but
+  # our parser uses whitespace boundaries. Without this step an `rm`
+  # token immediately after a quote (e.g. `echo "rm -rf /"`) wouldn't be
+  # flagged by the " rm " pattern. Replacing quotes with spaces preserves
+  # rm-token visibility for pipe-into-shell attacks like
+  # `echo "rm -rf /" | ksh`.
+  local cmd_unquoted="${cmd_norm//\"/ }"
+  cmd_unquoted="${cmd_unquoted//\'/ }"
+  # Normalize shell separators by padding with spaces. This ensures that
+  # an rm immediately following a separator without whitespace (e.g.
+  # `rm -rf safe&&rm -rf /` or `rm -rf safe;rm -rf /`) is still seen
+  # by the " rm " (space-rm-space) boundary detection. Multi-char
+  # separators must be padded BEFORE single-char ones so we don't break
+  # `&&` apart prematurely; the subsequent single-char pass adds extra
+  # spaces inside already-padded multi-char separators (harmless — bash
+  # word-splitting absorbs multiple consecutive spaces).
+  #
+  # Also normalize command-substitution delimiters (`$(`, backtick, `)`)
+  # to spaces. Without this, `$(rm -rf /)` or `` `rm -rf /` `` would
+  # have rm preceded by `$(` / backtick (not space), and the validator
+  # would miss the rm entirely. PR #297 cycle-12 finding #26.
+  local cmd_sep="${cmd_unquoted//&&/ && }"
+  cmd_sep="${cmd_sep//||/ || }"
+  cmd_sep="${cmd_sep//;/ ; }"
+  cmd_sep="${cmd_sep//&/ & }"
+  cmd_sep="${cmd_sep//|/ | }"
+  cmd_sep="${cmd_sep//\$(/ \$( }"     # `$(` (command substitution start) → space-padded
+  cmd_sep="${cmd_sep//)/ ) }"          # `)` (command substitution end) → space-padded
+  cmd_sep="${cmd_sep//\`/ }"           # backtick → space (legacy command substitution)
+  # Prepend a space so " rm " (space-rm-space) matches an rm at the very
+  # start of the command as well as in the middle (e.g. after "sudo " or
+  # after a separator).
+  local remaining=" $cmd_sep"
+
+  while [[ "$remaining" == *" rm "* ]]; do
+    # Advance past the next " rm " to the operand region.
+    remaining="${remaining#* rm }"
+
+    # Slice operand region at the first shell separator. Each %% is a
+    # no-op if its pattern is absent, so the chain safely peels the
+    # longest non-separator prefix.
+    local chunk="$remaining"
+    chunk="${chunk%%&&*}"
+    chunk="${chunk%%||*}"
+    chunk="${chunk%%;*}"
+    chunk="${chunk%%|*}"
+    chunk="${chunk%%&*}"
+
+    # Only validate when THIS rm has both -r and -f. Individual rms in a
+    # chain may not all be rm-rf (the outer caller only confirms the
+    # whole command contains rm-rf somewhere).
+    local has_r=0
+    local has_f=0
+    if [[ "$chunk" =~ (^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$) ]] || \
+       [[ "$chunk" =~ (^|[[:space:]])--recursive([[:space:]]|$) ]]; then
+      has_r=1
+    fi
+    if [[ "$chunk" =~ (^|[[:space:]])-[a-zA-Z]*[fF][a-zA-Z]*([[:space:]]|$) ]] || \
+       [[ "$chunk" =~ (^|[[:space:]])--force([[:space:]]|$) ]]; then
+      has_f=1
+    fi
+    if [[ $has_r -eq 0 || $has_f -eq 0 ]]; then
+      continue   # this rm isn't rm-rf; skip it
+    fi
+
+    # Validate operands of this rm chunk.
+    read -ra tokens <<< "$chunk"
+    local found_target=0
+    for token in "${tokens[@]}"; do
+      # Skip flag tokens (start with -)
+      if [[ "$token" == -* ]]; then continue; fi
+      # Handle no-space separator embedded in a token (e.g. "foo&&bar"):
+      # slice the prefix before the separator, evaluate it, then stop —
+      # the outer while loop will pick up any remaining rm invocations.
+      case "$token" in
+        *"&&"*|*"||"*|*";"*|*"|"*|*"&"*)
+          local prefix="$token"
+          prefix="${prefix%%&&*}"
+          prefix="${prefix%%||*}"
+          prefix="${prefix%%;*}"
+          prefix="${prefix%%|*}"
+          prefix="${prefix%%&*}"
+          if [[ -n "$prefix" && "$prefix" != -* ]]; then
+            found_target=1
+            if ! is_safe_rm_target "$prefix"; then return 1; fi
+          fi
+          break
+          ;;
+      esac
+      found_target=1
+      if ! is_safe_rm_target "$token"; then return 1; fi
+    done
+    # Bare `rm -rf` with no operands is unsafe.
+    if [[ $found_target -eq 0 ]]; then return 1; fi
   done
-  # If no non-flag arguments were found, treat as unsafe (e.g. bare "rm -rf")
-  if [[ $found_target -eq 0 ]]; then return 1; fi
+
   return 0
 }
 
@@ -151,10 +322,28 @@ all_rm_targets_safe() {
 #
 # B-2 fix: only trigger when BOTH -r and -f are present.
 #
-# B-3 fix: skip when the rm token appears only inside a quoted string
-#   argument to another command (e.g. echo "rm -rf is dangerous").
-#   We detect this by checking whether the outermost context before "rm"
-#   contains an unmatched opening quote.
+# B-3 note (cycle-3 removal): The B-3 string-literal filter was removed
+#   in cycle-3 after two successive cycles produced exploitable bypasses.
+#   The filter's purpose was to allow `echo "rm -rf is dangerous"` — a rare
+#   documentation use case.  Every implementation attempt introduced new
+#   HIGH-severity bypass vectors (quote parity in cycle-1; 2-element pipe
+#   denylist in cycle-2).  The filter has been removed entirely.  The
+#   usability cost is accepted: ANY command containing the rm-rf pattern now
+#   blocks, including:
+#     echo "rm -rf ..."          grep "rm -rf" file.txt
+#     git log --grep "rm -rf"    rg "rm -rf"
+#     git commit -m "removed rm -rf usage"
+#     alias safe='echo rm -rf'
+#   Workarounds for legitimate documentation strings:
+#     - Use split tokens:   echo "rm" "-rf" "..."
+#     - Obfuscate letter:   echo "r-m -rf is dangerous"
+#     - Use prose:          echo "the recursive force-remove command is dangerous"
+#
+# Known false positives (pre-existing, not introduced by M2):
+#   The substring scan fires on any token containing "rm" followed by -r/-f
+#   flags anywhere, so commands like `xterm -rf` or `term -rf` are blocked
+#   even though they have no relation to the rm command.  Future work should
+#   anchor "rm" at command-position rather than using a substring match.
 #
 # N-1/N-2/N-3 fix: rather than anchoring rm at command position (which
 #   fails for sudo/env/command/\rm prefixes, subshell expressions, and
@@ -166,36 +355,24 @@ all_rm_targets_safe() {
 #     xargs rm -rf         newline-embedded rm -rf /
 # ---------------------------------------------------------------------------
 
-# B-3 string-literal filter: check whether the text before the first
-# occurrence of "rm " is inside an unmatched double-quote context.
-_rm_in_string_literal=false
-if [[ "$COMMAND" =~ rm[[:space:]] ]]; then
-  # Extract everything before the first "rm " occurrence
-  _prefix="${COMMAND%%rm *}"
-  # Count unescaped double-quotes in the prefix
-  _quote_count=$(printf '%s' "$_prefix" | tr -cd '"' | wc -c)
-  # Odd count means we are inside a double-quoted string
-  if (( _quote_count % 2 != 0 )); then
-    _rm_in_string_literal=true
-  fi
+# Substring scan: does the command contain "rm" with both -r and -f?
+# Handles short flags (-r, -R, -f, -rf, etc.) and long-form synonyms
+# (--recursive, --force) and any mixed combination thereof.
+_has_r=false
+_has_f=false
+if [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[a-zA-Z]*[rR][a-zA-Z]* ]] || \
+   [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[rR]([[:space:]]|$) ]] || \
+   [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?--recursive([[:space:]]|$) ]]; then
+  _has_r=true
 fi
-
-if ! $_rm_in_string_literal; then
-  # Substring scan: does the command contain "rm" with both -r and -f?
-  _has_r=false
-  _has_f=false
-  if [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[a-zA-Z]*[rR][a-zA-Z]* ]] || \
-     [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[rR]([[:space:]]|$) ]]; then
-    _has_r=true
-  fi
-  if [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[a-zA-Z]*[fF][a-zA-Z]* ]] || \
-     [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[fF]([[:space:]]|$) ]]; then
-    _has_f=true
-  fi
-  if $_has_r && $_has_f; then
-    if ! all_rm_targets_safe "$COMMAND"; then
-      block "rm -rf" "recursive force-delete on broad targets can destroy repository state; use targeted deletion on specific safe directories only"
-    fi
+if [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[a-zA-Z]*[fF][a-zA-Z]* ]] || \
+   [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?-[fF]([[:space:]]|$) ]] || \
+   [[ "$COMMAND" =~ rm[[:space:]]([^;|&]*[[:space:]])?--force([[:space:]]|$) ]]; then
+  _has_f=true
+fi
+if $_has_r && $_has_f; then
+  if ! all_rm_targets_safe "$COMMAND"; then
+    block "rm -rf" "recursive force-delete on broad targets can destroy repository state; use targeted deletion on specific safe directories only"
   fi
 fi
 
@@ -254,20 +431,34 @@ fi
 # files without requiring explicit file names, posing the same broad-staging
 # risk as -A / --all.
 # ---------------------------------------------------------------------------
+# Note on terminators: each pattern ends with (.[[:space:]]*($|[;&|]))
+# instead of `\.[[:space:]]*$` so chained commands like
+# `git add . && git commit -m ...` are caught — the dot can be followed
+# by end-of-string OR a shell separator (;, &, |). Without this, an
+# end-anchored guard silently allows the broad-staging form when the
+# user chains a follow-up command.
+#
+# Cycle-19: also block `git add -- .` — git treats `--` as the option
+# terminator and the following `.` is the same broad pathspec as a bare
+# `.`. Without the optional `(--[[:space:]]+)?` group, an attacker could
+# bypass the bare-dot guard by inserting the option terminator. Same
+# treatment for any whitespace before the dot. See `git add -h`:
+#   usage: git add [<options>] [--] <pathspec>...
 if [[ "$COMMAND" =~ git[[:space:]].*add.*([[:space:]]+-A[[:space:]]|[[:space:]]+-A$) ]] || \
    [[ "$COMMAND" =~ git[[:space:]].*add.*--all ]] || \
    [[ "$COMMAND" =~ git[[:space:]].*add.*([[:space:]]+-u[[:space:]]|[[:space:]]+-u$) ]] || \
    [[ "$COMMAND" =~ git[[:space:]].*add.*--update ]] || \
-   [[ "$COMMAND" =~ git[[:space:]].*add[[:space:]]+\.[[:space:]]*$ ]]; then
-  block "git add -A / --all / -u / --update / git add ." "staging all changes risks committing unintended files (secrets, binaries); stage files explicitly by name"
+   [[ "$COMMAND" =~ git[[:space:]].*add[[:space:]]+(--[[:space:]]+)?\.[[:space:]]*($|[;&|]) ]]; then
+  block "git add -A / --all / -u / --update / git add [--] ." "staging all changes risks committing unintended files (secrets, binaries); stage files explicitly by name"
 fi
 
 # ---------------------------------------------------------------------------
 # Rule: git checkout -- . (discard all unstaged changes in working tree)
 # Allow: git checkout -- specific-file  and  git checkout branch-name
 # The dangerous form is exactly "git checkout -- ." (dot as sole path arg).
+# Terminator handles chained commands per the note above.
 # ---------------------------------------------------------------------------
-if [[ "$COMMAND" =~ git[[:space:]].*checkout[[:space:]].*--[[:space:]]+\.[[:space:]]*$ ]]; then
+if [[ "$COMMAND" =~ git[[:space:]].*checkout[[:space:]].*--[[:space:]]+\.[[:space:]]*($|[;&|]) ]]; then
   block "git checkout -- ." "discards all unstaged working-tree changes and cannot be undone; specify individual files instead"
 fi
 
@@ -275,9 +466,15 @@ fi
 # Rule: git restore . / git restore --staged .
 # Allow: git restore <specific-file>
 # Block only when the sole path argument is a bare dot.
+# Terminator handles chained commands per the note above.
 # ---------------------------------------------------------------------------
-if [[ "$COMMAND" =~ git[[:space:]].*restore([[:space:]]+(--staged|--worktree|--source=[^[:space:]]*))*[[:space:]]+\.[[:space:]]*$ ]]; then
-  block "git restore ." "discards all changes (staged or unstaged) and cannot be undone; specify individual files instead"
+# Cycle-19 sibling extension: also accept an explicit `--` option terminator
+# before the bare dot (e.g. `git restore -- .`, `git restore --staged -- .`).
+# Per `git restore -h`, usage is `git restore [<options>] [--] <pathspec>...`
+# so omitting the `--` cover-all-with-option-terminator form would replicate
+# the cycle-19 `git add -- .` bypass class on this command too.
+if [[ "$COMMAND" =~ git[[:space:]].*restore([[:space:]]+(--staged|--worktree|--source=[^[:space:]]*))*[[:space:]]+(--[[:space:]]+)?\.[[:space:]]*($|[;&|]) ]]; then
+  block "git restore [--] ." "discards all changes (staged or unstaged) and cannot be undone; specify individual files instead"
 fi
 
 # ---------------------------------------------------------------------------
@@ -314,16 +511,22 @@ fi
 #
 # N-1/N-2/N-3 fix: same approach — substring match anywhere.
 # ---------------------------------------------------------------------------
-if [[ "$COMMAND" =~ mkfs([.[:space:]]|$) ]]; then
+if [[ "$COMMAND" =~ (^|[;&|[:space:]])mkfs([.[:space:]]|$) ]]; then
   block "mkfs" "formats a filesystem, permanently destroying all existing data on the target device"
 fi
 
 # ---------------------------------------------------------------------------
 # Rule: fork bomb patterns  :(){ :|:& };:
-# Match the two core signatures: :|: (self-pipe recursion) and (){ (function
-# definition with an open brace that enables the pattern).
+# :|:       — self-pipe recursion: a function calls itself twice, piped,
+#             causing exponential process spawning.
+# ()[[:space:]]*{ — shell function definition preamble; `(){` (no space) and
+#             `() {` (with space) are both matched.  Any function definition
+#             followed immediately by a recursive pipe call is the fork-bomb
+#             template, so we block on the definition alone as a conservative
+#             proxy — legitimate scripts rarely define anonymous functions
+#             named single punctuation characters in a one-liner.
 # ---------------------------------------------------------------------------
-if [[ "$COMMAND" =~ :\|: ]] || [[ "$COMMAND" =~ \(\)\{[[:space:]] ]] || [[ "$COMMAND" =~ \(\)\{[[:space:]]*: ]]; then
+if [[ "$COMMAND" =~ :\|: ]] || [[ "$COMMAND" =~ \(\)[[:space:]]*\{ ]]; then
   block "fork bomb" "fork bomb pattern detected — this would exhaust system process limits"
 fi
 

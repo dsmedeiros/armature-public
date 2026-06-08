@@ -56,9 +56,19 @@ REL_PATH="${FILE_PATH#"${REPO_ROOT}"}"
 REL_PATH="${REL_PATH#/}"
 
 # Governance directory prefixes — changes here do not trigger test runs.
+# Also exclude root-level governance adapter files. These have no directory
+# prefix (REL_PATH is just the filename), so the path-prefix patterns above
+# don't catch them; classify them explicitly here.
 case "$REL_PATH" in
   .armature/*|.claude/*|docs/*)
-    # Governance file — do nothing.
+    # Governance file under a known governance directory — do nothing.
+    exit 0
+    ;;
+  CLAUDE.md|CODEX.md|AGENTS.md|agents.md|ARMATURE.md)
+    # Root-level governance adapter — do nothing. These are routing
+    # tables / spec entry points; editing them is a governance update
+    # and should not trigger application CI (consistent with the
+    # post-stop classification convention).
     exit 0
     ;;
 esac

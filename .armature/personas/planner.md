@@ -19,6 +19,8 @@ You are a distinct planning role invoked when:
 - Task complexity > 7, or
 - Estimated LOC exceeds `governance.changeset-budget.planner-trigger-loc`
 
+**Documentation-only exception:** the orchestrator does not invoke the planner for documentation-only changesets on LOC grounds — prose-only changes that touch no governed/structural file (ARMATURE.md, any agents.md, the tool adapters, the invariant registry/invariants.md, config.yaml, ADRs, `.taskmaster/docs/**` PRDs, personas, disciplines, or any code/hook/test; exclusions take precedence over the prose inclusions). See ARMATURE.md §5.1. The complexity > 7 trigger still applies.
+
 Complexity is scored on a 1-10 scale per the rubric in ARMATURE.md section 4.6.1.
 
 In Claude Code this role usually runs as a subagent. In Codex or other runtimes without persistent subagents, the orchestrator must still run a separate planning pass under this persona before implementation.
